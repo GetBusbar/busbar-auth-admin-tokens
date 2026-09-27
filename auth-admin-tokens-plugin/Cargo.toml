@@ -23,6 +23,6 @@ busbar-auth-admin-tokens = { path = "../auth-admin-tokens", features = ["dropped
 # The conformance test loads the built cdylib over the REAL loader (sign, pack, scan, open) and the
 # linked row through the same registry — dev-only, never in the shipped artifact. Same pinned rev as
 # the logic crate's busbar-contract, so one busbar source resolves.
-busbar-plugin-loader = { git = "https://github.com/GetBusbar/busbar", rev = "dc28b2171cd1e0a8c61b62ea16714d2d8dc65f39" }
-busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "dc28b2171cd1e0a8c61b62ea16714d2d8dc65f39" }
+busbar-plugin-loader = { git = "https://github.com/GetBusbar/busbar", rev = "7a5b429041752e00375e120ab1547a8928c3dee4" }
+busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "7a5b429041752e00375e120ab1547a8928c3dee4" }
 serde_json = "1"
