@@ -1,7 +1,7 @@
 [package]
 name = "busbar-auth-admin-tokens"
 version = "1.5.0"
-publish = false            # internal workspace crate; never goes to crates.io
+publish = false            # linked into busbar at a pinned rev, or shipped as a signed tarball; never to crates.io
 edition = "2021"
 rust-version = "1.97"
 description = "The built-in `admin-tokens` admin-auth plugin for busbar: the single operator admin token, compared in constant time across both carriers."
@@ -22,4 +22,13 @@ crate-type = ["cdylib", "rlib"]
 dropped-in = []
 
 [dependencies]
-busbar-contract = { path = "../busbar-contract" }
+# The one busbar crate this plugin names (#40: a plugin depends on the contract only), pinned to the
+# rev in the repo's `.busbar-ref`.
+busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "dc28b2171cd1e0a8c61b62ea16714d2d8dc65f39" }
+
+[dev-dependencies]
+# The conformance test loads the built cdylib over the REAL loader (sign, pack, scan, open) and the
+# linked row through the same registry — dev-only, never in the shipped artifact. Same pinned rev as
+# busbar-contract above, so one busbar source resolves.
+busbar-plugin-loader = { git = "https://github.com/GetBusbar/busbar", rev = "dc28b2171cd1e0a8c61b62ea16714d2d8dc65f39" }
+serde_json = "1"
