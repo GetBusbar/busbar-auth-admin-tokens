@@ -54,6 +54,14 @@ name = "busbar-auth-admin-tokens"
 version = "1.5.0"
 dependencies = [
  "busbar-contract",
+]
+
+[[package]]
+name = "busbar-auth-admin-tokens-plugin"
+version = "1.5.0"
+dependencies = [
+ "busbar-auth-admin-tokens",
+ "busbar-contract",
  "busbar-plugin-loader",
  "serde_json",
 ]

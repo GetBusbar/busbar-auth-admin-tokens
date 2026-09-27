@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "busbar-auth-admin-tokens-plugin"
+version = "1.5.0"
+publish = false            # first-party signed cdylib, shipped as a packed/signed tarball, not to crates.io
+edition = "2021"
+rust-version = "1.97"
+description = "First-party signed kind:auth plugin cdylib: the built-in admin-tokens admin-auth module (the single operator admin token, compared in constant time), packaged as a droppable busbar plugin."
+license = "Apache-2.0"
+
+[lib]
+# cdylib: the DROPPED-IN door (a signed tarball in `plugins/`). rlib: REQUIRED for `cargo test` to
+# emit the cdylib artifact the conformance test packs, and the linked registration a loader test
+# hands `PluginRegistry::link`.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# THE LOGIC, same repo, with its door on: its `export_auth_plugin!(open)` registers the image's one
+# door; this crate only makes that door a loadable library.
+busbar-auth-admin-tokens = { path = "../auth-admin-tokens", features = ["dropped-in"] }
+
+[dev-dependencies]
+# The conformance test loads the built cdylib over the REAL loader (sign, pack, scan, open) and the
+# linked row through the same registry — dev-only, never in the shipped artifact. Same pinned rev as
+# the logic crate's busbar-contract, so one busbar source resolves.
+busbar-plugin-loader = { git = "https://github.com/GetBusbar/busbar", rev = "dc28b2171cd1e0a8c61b62ea16714d2d8dc65f39" }
+busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "dc28b2171cd1e0a8c61b62ea16714d2d8dc65f39" }
+serde_json = "1"

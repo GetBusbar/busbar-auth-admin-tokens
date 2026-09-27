@@ -2,8 +2,7 @@
 // Copyright (C) 2026 Busbar Inc and contributors
 
 //! **ONE ADMIN-AUTH MODULE, BOTH DOORS, ONE ROW** — the `admin-tokens` module's linked + dropped-in
-//! conformance, run against the busbar rev this repo pins (`.busbar-ref`). Built with the door on:
-//! `cargo test --features dropped-in` (CI runs `--all-features`); without it this file is not built.
+//! conformance, run against the busbar rev this repo pins (`.busbar-ref`).
 //!
 //! The module is held two ways at once: LINKED (this crate's `BUSBAR_COLD_ENTRY`, registered through
 //! the loader's `PluginRegistry::link`) and DROPPED IN (this crate's built cdylib, signed first-party
@@ -22,9 +21,7 @@
 //! Ported from busbar's `crates/plugin-loader/src/tests/auth_verify_conformance_tests.rs`, where the
 //! module was proven both ways before it moved to this repo; busbar still runs that test against the
 //! pinned module.
-#![cfg(feature = "dropped-in")]
-
-use busbar_auth_admin_tokens::authenticate_admin_tokens;
+use busbar_auth_admin_tokens_plugin::authenticate_admin_tokens;
 use busbar_contract::redacted::sha256_hex;
 use busbar_plugin_loader::sign::{sign, Manifest, SigningKey, TrustPolicy};
 use busbar_plugin_loader::{LinkedPlugin, PluginRegistry};
@@ -57,13 +54,15 @@ fn cdylib() -> Vec<u8> {
         .parent()
         .and_then(|d| d.parent())
         .expect("target/<profile>");
-    let file = busbar_plugin_loader::plugin_library_filename("busbar_auth_admin_tokens");
+    let file = busbar_plugin_loader::plugin_library_filename("busbar_auth_admin_tokens_plugin");
     let found = [profile.join(&file), profile.join("deps").join(&file)]
         .into_iter()
         .filter_map(|p| Some((std::fs::metadata(&p).ok()?.modified().ok()?, p)))
         .max()
         .map(|(_, p)| p)
-        .unwrap_or_else(|| panic!("the busbar-auth-admin-tokens cdylib ({file}) is not built"));
+        .unwrap_or_else(|| {
+            panic!("the busbar-auth-admin-tokens-plugin cdylib ({file}) is not built")
+        });
     std::fs::read(found).expect("read the cdylib")
 }
 
@@ -100,7 +99,7 @@ fn linked() -> PluginRegistry {
     PluginRegistry::empty()
         .link(vec![LinkedPlugin::boundary(
             statement(),
-            &busbar_auth_admin_tokens::BUSBAR_COLD_ENTRY,
+            &busbar_auth_admin_tokens_plugin::BUSBAR_COLD_ENTRY,
         )])
         .expect("the linked door admits the module")
 }

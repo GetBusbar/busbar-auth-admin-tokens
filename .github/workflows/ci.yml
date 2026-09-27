@@ -6,9 +6,9 @@
 # field 1 of `.busbar-ref`. No sibling checkout, no path dependency — so what CI proves is exactly
 # what a busbar build that pulls this repo at a pinned rev links.
 #
-# Two builds of the one crate are proven: WITHOUT features (what busbar's admin chain links — the
-# function, no door registration) and with `dropped-in` (the cdylib's door, which the conformance
-# test dlopens beside the linked registration).
+# Both doors are proven: the logic crate alone, WITHOUT features (what busbar's admin chain links —
+# the function, no door registration), and the plugin crate, which turns the logic's `dropped-in`
+# door on and is the cdylib the conformance test dlopens beside the linked registration.
 #
 # The moving leg (this repo's `dev` against busbar's `predev`) is busbar's side of the contract: its
 # ci.yml `consumers` job builds this repo's `dev` with busbar-contract (and busbar-plugin-loader)
@@ -69,15 +69,11 @@ jobs:
           components: clippy, rustfmt
       - name: fmt
         run: cargo fmt --all -- --check
-      - name: clippy (the linked build, and the dropped-in door)
-        run: |
-          cargo clippy --workspace --all-targets --locked -- -D warnings
-          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-      - name: build (the rlib busbar links, and the cdylib a signed tarball carries)
-        run: |
-          cargo build --workspace --locked
-          cargo build --workspace --all-features --locked
-      - name: test (the module's own suite, linked build)
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: build the linked half alone (the rlib busbar links, no door registration)
+        run: cargo build -p busbar-auth-admin-tokens --locked
+      - name: build (the rlib, and the cdylib a signed tarball carries)
+        run: cargo build --workspace --locked
+      - name: test (the module's own suite + linked/dropped-in conformance over the real loader)
         run: cargo test --workspace --locked
-      - name: test (the suite + linked/dropped-in conformance over the real loader)
-        run: cargo test --workspace --all-features --locked

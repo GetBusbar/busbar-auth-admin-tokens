@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # One repo per plugin (owner ruling, busbar 1.6.0): this repo holds the built-in `admin-tokens`
-# admin-auth module (busbar-auth-admin-tokens) — the single operator admin token, compared in constant
-# time across both carriers. busbar's default build links it (the `auth-admin-tokens` feature) at a
-# pinned rev; under its `dropped-in` feature the same crate's cdylib is a droppable `kind: auth`
-# plugin.
+# admin-auth module — the single operator admin token, compared in constant time across both
+# carriers — as a same-repo Cargo workspace laid out like store-mysql: the logic
+# (busbar-auth-admin-tokens, the rlib busbar's default build links at a pinned rev under its
+# `auth-admin-tokens` feature) and the thin cdylib that packages it, door on, as a droppable
+# `kind: auth` plugin (busbar-auth-admin-tokens-plugin).
 #
 # Its one busbar dependency is busbar-contract (busbar-plugin-loader too, dev-only for the
 # conformance test), a git dependency on GetBusbar/busbar pinned to the rev in `.busbar-ref`
@@ -13,4 +14,5 @@
 resolver = "2"
 members = [
     "auth-admin-tokens",
+    "auth-admin-tokens-plugin",
 ]
