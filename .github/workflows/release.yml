@@ -32,10 +32,10 @@ jobs:
     uses: GetBusbar/busbar/.github/workflows/plugin-release.yml@7a5b429041752e00375e120ab1547a8928c3dee4
     with:
       plugin_crate: busbar-auth-admin-tokens-plugin
-      manifest_name: busbar-auth-admin-tokens-plugin
+      manifest_name: busbar-auth-admin-tokens
       plugin_alias: admin-tokens
       plugin_kind: auth
-      asset_prefix: busbar-auth-admin-tokens-plugin
+      asset_prefix: busbar-auth-admin-tokens
       description: "First-party signed kind:auth plugin cdylib: the built-in admin-tokens admin-auth module (the single operator admin token, compared in constant time), packaged as a droppable busbar plugin."
       lib_only: false
       needs_prompt: ""
@@ -48,8 +48,8 @@ jobs:
     uses: GetBusbar/busbar/.github/workflows/plugin-consumer-verify.yml@7a5b429041752e00375e120ab1547a8928c3dee4
     with:
       version: ${{ github.ref_name }}
-      asset_prefix: busbar-auth-admin-tokens-plugin
-      plugin_name: busbar-auth-admin-tokens-plugin
+      asset_prefix: busbar-auth-admin-tokens
+      plugin_name: busbar-auth-admin-tokens
       plugin_alias: admin-tokens
       plugin_kind: auth
       bundle_image: ""
