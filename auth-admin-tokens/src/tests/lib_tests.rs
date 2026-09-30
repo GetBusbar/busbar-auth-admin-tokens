@@ -42,6 +42,23 @@ fn either_carrier_identifies() {
     }
 }
 
+/// A configured token that is itself JWS-shaped still identifies: the compare runs before the
+/// shape deferral.
+#[test]
+fn a_jws_shaped_configured_token_identifies() {
+    let token = "abc.def.ghi";
+    let h = hash(token);
+    assert_eq!(
+        authenticate_admin_tokens(Some(&h), Some(token), None),
+        AuthVerdict::Identify(Principal::from_id(ADMIN_TOKENS_PRINCIPAL_ID))
+    );
+    let module = open(&h).expect("a digest opens");
+    assert_eq!(
+        module.authenticate(Some(token)),
+        AuthVerdict::Identify(Principal::from_id(ADMIN_TOKENS_PRINCIPAL_ID))
+    );
+}
+
 #[test]
 fn wrong_credential_rejects() {
     let h = hash("secret");
