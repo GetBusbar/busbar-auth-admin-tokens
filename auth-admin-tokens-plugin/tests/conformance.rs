@@ -1,28 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Busbar Inc and contributors
 
-//! **ONE ADMIN-AUTH MODULE, BOTH DOORS, ONE ROW** — the `admin-tokens` module's linked + dropped-in
-//! conformance, run against the busbar rev this repo pins (`.busbar-ref`).
+//! **ONE ADMIN-AUTH MODULE, BOTH DOORS, ONE ROW** — the `admin-tokens` plugin's linked + dropped-in
+//! conformance on the auth kind's memory ABI, run against the busbar rev this repo pins
+//! (`.busbar-ref`).
 //!
-//! The module is held two ways at once: LINKED (this crate's `BUSBAR_COLD_ENTRY`, registered through
-//! the loader's `PluginRegistry::link`) and DROPPED IN (this crate's built cdylib, signed first-party
-//! under the SAME statement into a temp `plugins/` directory and found by the loader's scan). Each
-//! arm is opened by the one `open_auth` and driven over the same token cases — the accepted token
-//! (`Identify`), a wrong opaque token (`Reject`), a token in another scheme's grammar (`Pass`), and
-//! no credential (`Pass`) — plus the module's name and cacheability and its refusal of a config that
-//! is not a digest. The two transcripts must agree byte for byte, and each must equal what
-//! `authenticate_admin_tokens` — the function busbar's admin chain calls when it links this crate —
-//! answers for the same candidate on the Bearer carrier.
+//! The plugin is held two ways at once: LINKED (the logic crate's `door::door`, registered through
+//! the loader's `PluginRegistry::link`) and DROPPED IN (this crate's built cdylib, exporting the same
+//! door as `busbar_plugin_door`, signed first-party under the SAME statement into a temp `plugins/`
+//! directory and found by the loader's scan). Each arm is opened by the loader's auth rows on a real
+//! dispatcher and driven over the same carrier cases — the accepted token on either carrier or both,
+//! a wrong opaque token, a token in another scheme's grammar, none — each ON THE SPOT (ticket-less)
+//! and SUBMITTED (awaited), plus its refusal of settings that are not a digest. The two transcripts
+//! must agree, and every verdict must equal what `authenticate_admin_tokens` answers for the same
+//! carriers.
 //!
 //! The RED arms are in the same file: the same cdylib dropped in under a THIRD-PARTY signature is a
 //! different row, and the dropped-in door opened over a ROTATED token's digest judges differently —
 //! so the equality is not vacuous in either the row or the verdicts.
-//!
-//! Ported from busbar's `crates/plugin-loader/src/tests/auth_verify_conformance_tests.rs`, where the
-//! module was proven both ways before it moved to this repo; busbar still runs that test against the
-//! pinned module.
-use busbar_auth_admin_tokens_plugin::authenticate_admin_tokens;
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use busbar_auth_admin_tokens::{authenticate_admin_tokens, ADMIN_TOKEN_HEADER};
+use busbar_contract::abi::sdk::auth_door::Verdict;
+use busbar_contract::auth_calls::{Verified, VerifyRequest};
 use busbar_contract::redacted::sha256_hex;
+use busbar_plugin_loader::auth_axis::AuthRows;
+use busbar_plugin_loader::dispatch::{Budgets, DispatchConfig, Dispatcher};
 use busbar_plugin_loader::sign::{sign, Manifest, SigningKey, TrustPolicy};
 use busbar_plugin_loader::{LinkedPlugin, PluginRegistry};
 
@@ -34,16 +39,22 @@ fn release() -> SigningKey {
 /// The version both arms state.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The operator's token. The module is configured with its SHA-256 digest, never the token.
+/// The operator's token. The plugin is configured with its SHA-256 digest, never the token.
 const TOKEN: &str = "the-operator-token";
 
-/// The candidates each door judges: the accepted token, a wrong opaque token, a JWS-shaped token
-/// (another scheme's grammar), none.
-const CANDIDATES: [Option<&str>; 4] = [
-    Some(TOKEN),
-    Some("not-the-token"),
-    Some("aaa.bbb.ccc"),
-    None,
+/// The carriers each door judges, as (Bearer, `X-Admin-Token`): the accepted token on either and
+/// on both, the token beside a wrong one, a wrong opaque token, a JWS-shaped token (another
+/// scheme's grammar), a JWS beside a wrong opaque token, none.
+const CASES: [(Option<&str>, Option<&str>); 9] = [
+    (Some(TOKEN), None),
+    (None, Some(TOKEN)),
+    (Some(TOKEN), Some(TOKEN)),
+    (Some("not-the-token"), Some(TOKEN)),
+    (Some("not-the-token"), None),
+    (None, Some("not-the-token")),
+    (Some("aaa.bbb.ccc"), None),
+    (Some("aaa.bbb.ccc"), Some("not-the-token")),
+    (None, None),
 ];
 
 /// This crate's built cdylib (uplifted or under `deps`, newest wins). A missing artifact is a
@@ -66,21 +77,15 @@ fn cdylib() -> Vec<u8> {
     std::fs::read(found).expect("read the cdylib")
 }
 
-/// The statement both doors make for the module: a first-party `kind: auth` plugin at the highest
-/// auth payload schema the pinned loader supports.
+/// The statement both doors make: a first-party `kind: auth` plugin on the auth kind's memory ABI.
 fn statement() -> Manifest {
-    let abi = busbar_plugin_loader::supported_abi("auth")
-        .iter()
-        .copied()
-        .max()
-        .unwrap_or_default();
     Manifest {
         name: "busbar-auth-admin-tokens".into(),
         alias: "admin-tokens".into(),
         kind: "auth".into(),
         version: VERSION.into(),
         publisher: busbar_plugin_loader::sign::FIRST_PARTY_PUBLISHER.into(),
-        abi_version: abi,
+        abi_version: busbar_contract::abi::auth::ABI_VERSION,
         sha256: String::new(),
         signature: String::new(),
         description: String::new(),
@@ -94,14 +99,14 @@ fn statement() -> Manifest {
     }
 }
 
-/// THE LINKED DOOR: this crate's `BUSBAR_COLD_ENTRY` through `PluginRegistry::link`.
+/// THE LINKED DOOR: the logic crate's `door::door` through `PluginRegistry::link`.
 fn linked() -> PluginRegistry {
     PluginRegistry::empty()
-        .link(vec![LinkedPlugin::boundary(
+        .link(vec![LinkedPlugin::door(
             statement(),
-            &busbar_auth_admin_tokens_plugin::BUSBAR_COLD_ENTRY,
+            busbar_auth_admin_tokens::door::door,
         )])
-        .expect("the linked door admits the module")
+        .expect("the linked door admits the plugin")
 }
 
 /// THE DROPPED-IN DOOR: `lib` signed by `signer` into a fresh `plugins/` directory, scanned under a
@@ -136,15 +141,58 @@ fn dropped(tag: &str, lib: &[u8], signer: &SigningKey) -> PluginRegistry {
         min_versions: Default::default(),
     };
     let registry =
-        busbar_plugin_loader::scan_and_validate(&dir, &policy).expect("the signed module scans");
+        busbar_plugin_loader::scan_and_validate(&dir, &policy).expect("the signed plugin scans");
     let _ = std::fs::remove_dir_all(&dir);
     registry
 }
 
+/// The process's dispatcher, as the composition root builds one.
+fn dispatcher() -> Arc<Dispatcher> {
+    Arc::new(Dispatcher::new(DispatchConfig {
+        workers: 2,
+        budgets: Budgets::default(),
+        watchdog_period: Duration::from_millis(20),
+    }))
+}
+
+/// One carrier case as the host hands it to `verify`: the Bearer as the credential, the header as
+/// the plugin's named carrier.
+fn request(bearer: Option<&str>, header: Option<&str>) -> VerifyRequest {
+    VerifyRequest {
+        credential: bearer.map(|b| b.as_bytes().to_vec()),
+        carriers: header
+            .map(|h| vec![(ADMIN_TOKEN_HEADER.to_string(), h.as_bytes().to_vec())])
+            .unwrap_or_default(),
+        method: "GET".into(),
+        authority: "node.example".into(),
+        path: "/admin/v1/keys".into(),
+        ..VerifyRequest::default()
+    }
+}
+
+/// A verdict as the transcript spells it.
+fn spelled(v: &Verified) -> String {
+    match v {
+        Verified::Identity(id) => format!("Identity({})", id.subject),
+        other => format!("{other:?}"),
+    }
+}
+
+/// The linked function's verdict, spelled the same way.
+fn expected(digest: &str, bearer: Option<&str>, header: Option<&str>) -> String {
+    match authenticate_admin_tokens(Some(digest), bearer, header) {
+        Verdict::Identity(id) => format!("Identity({})", id.subject),
+        Verdict::Reject => "Reject".into(),
+        Verdict::Pass => "Pass".into(),
+    }
+}
+
 /// What one door does, as one comparable transcript: the row's statement (every manifest field but
-/// the two describing a tarball), whether it is first-party, the opened module's name and
-/// cacheability, its verdict for every candidate, and its refusal of a config that is not a digest.
-fn transcript(registry: &PluginRegistry, digest: &str) -> serde_json::Value {
+/// the two describing a tarball), whether it is first-party, the opened instance's name, carriers
+/// and facts, its verdict for every case on the spot and submitted, and its refusal of settings
+/// that are not a digest.
+async fn transcript(registry: PluginRegistry, digest: &str) -> serde_json::Value {
+    let registry: &'static PluginRegistry = Box::leak(Box::new(registry));
     let p = registry
         .resolve("admin-tokens")
         .expect("the alias resolves");
@@ -153,66 +201,77 @@ fn transcript(registry: &PluginRegistry, digest: &str) -> serde_json::Value {
         signature: String::new(),
         ..p.manifest.clone()
     };
-    let module = registry
-        .open_auth("admin-tokens", digest)
-        .expect("the module opens over a digest");
-    let verdicts: Vec<String> = CANDIDATES
-        .iter()
-        .map(|c| format!("{c:?} -> {:?}", module.authenticate(*c)))
-        .collect();
-    let refused = registry
-        .open_auth("admin-tokens", "the-raw-token")
-        .err()
-        .map(|e| e.to_string());
+    let rows = AuthRows::new(registry, dispatcher());
+    let opened = rows
+        .open("admin-tokens", "admin-tokens", &serde_json::json!(digest))
+        .expect("the plugin opens over a digest");
+    let mut now = Vec::new();
+    let mut submitted = Vec::new();
+    for (bearer, header) in CASES {
+        let v = opened
+            .verify_now(&request(bearer, header))
+            .expect("admin-tokens answers on the spot");
+        now.push(spelled(&v));
+        let v = Box::into_pin(opened.verify(request(bearer, header))).await;
+        submitted.push(spelled(&v));
+    }
+    let refused = rows
+        .open(
+            "admin-tokens",
+            "admin-tokens",
+            &serde_json::json!("the-raw-token"),
+        )
+        .err();
     serde_json::json!({
         "row": stated,
         "first_party": p.first_party(),
-        "name": module.name(),
-        "cacheable": module.cacheable(),
-        "verdicts": verdicts,
+        "name": opened.name(),
+        "carriers": opened.carriers(),
+        "facts": opened.facts(),
+        "now": now,
+        "submitted": submitted,
         "refused": refused,
     })
 }
 
-/// The module registers ONE row and judges as ONE module through either door, and every verdict is
-/// the linked function's — and the same cdylib under a third-party signature, or opened over a
-/// rotated digest, does not compare equal (the RED arms).
-#[test]
-fn the_linked_and_the_dropped_in_admin_tokens_module_are_one_module() {
+/// The plugin registers ONE row and judges as ONE plugin through either door, on the spot and
+/// submitted, and every verdict is the linked function's — and the same cdylib under a third-party
+/// signature, or opened over a rotated digest, does not compare equal (the RED arms).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_linked_and_the_dropped_in_admin_tokens_plugin_are_one_plugin() {
     let digest = sha256_hex(TOKEN.as_bytes());
     let lib = cdylib();
 
-    let linked = transcript(&linked(), &digest);
-    let dropped_in = transcript(&dropped("first-party", &lib, &release()), &digest);
-    assert_eq!(linked, dropped_in, "the two doors are not one module");
+    let linked = transcript(linked(), &digest).await;
+    let dropped_in = transcript(dropped("first-party", &lib, &release()), &digest).await;
+    assert_eq!(linked, dropped_in, "the two doors are not one plugin");
 
-    // Every verdict is the linked function's, over the Bearer carrier — and the cases reach all
-    // three, so the equality covers Identify, Reject and Pass alike.
-    let expected: Vec<String> = CANDIDATES
+    let want: Vec<String> = CASES
         .iter()
-        .map(|c| {
-            format!(
-                "{c:?} -> {:?}",
-                authenticate_admin_tokens(Some(&digest), *c, None)
-            )
-        })
+        .map(|(b, h)| expected(&digest, *b, *h))
         .collect();
-    assert_eq!(linked["verdicts"], serde_json::json!(expected));
-    let verdicts = linked["verdicts"].to_string();
-    for verdict in ["Identify", "Reject", "Pass"] {
+    assert_eq!(linked["now"], serde_json::json!(want));
+    assert_eq!(linked["submitted"], serde_json::json!(want));
+    let verdicts = linked["now"].to_string();
+    for verdict in ["Identity(admin)", "Reject", "Pass"] {
         assert!(verdicts.contains(verdict), "no {verdict} among {verdicts}");
     }
     assert_eq!(linked["name"], "admin-tokens");
-    assert_eq!(linked["cacheable"], false);
+    assert_eq!(linked["carriers"], serde_json::json!([ADMIN_TOKEN_HEADER]));
+    assert_eq!(linked["facts"], 0, "a rotatable compare is never cached");
     assert!(
         linked["refused"].is_string(),
-        "a raw token is refused as config: {}",
+        "a raw token is refused as settings: {}",
         linked["refused"]
+    );
+    assert!(
+        !linked["refused"].to_string().contains("the-raw-token"),
+        "the refusal never echoes the settings"
     );
 
     // RED arm 1: the same cdylib under a third-party signature is a different row.
     let third = SigningKey::from_bytes(&[7u8; 32]);
-    let foreign = transcript(&dropped("third-party", &lib, &third), &digest);
+    let foreign = transcript(dropped("third-party", &lib, &third), &digest).await;
     assert_ne!(
         foreign, linked,
         "a third-party row must not read as the first-party one"
@@ -221,13 +280,14 @@ fn the_linked_and_the_dropped_in_admin_tokens_module_are_one_module() {
 
     // RED arm 2: the dropped-in door over a ROTATED digest judges differently.
     let rotated = transcript(
-        &dropped("rotated", &lib, &release()),
+        dropped("rotated", &lib, &release()),
         &sha256_hex(b"a-rotated-token"),
-    );
+    )
+    .await;
     assert_eq!(rotated["row"], linked["row"], "one row either way");
     assert_ne!(
-        rotated["verdicts"], linked["verdicts"],
+        rotated["now"], linked["now"],
         "a door judging another token must not compare equal"
     );
-    assert!(!rotated["verdicts"].to_string().contains("Identify"));
+    assert!(!rotated["now"].to_string().contains("Identity"));
 }

@@ -13,7 +13,7 @@ fn hash(s: &str) -> String {
 fn no_configured_token_passes() {
     assert_eq!(
         authenticate_admin_tokens(None, Some("x"), None),
-        AuthVerdict::Pass
+        Verdict::Pass
     );
 }
 
@@ -22,7 +22,7 @@ fn no_credential_passes() {
     let h = hash("secret");
     assert_eq!(
         authenticate_admin_tokens(Some(&h), None, None),
-        AuthVerdict::Pass
+        Verdict::Pass
     );
 }
 
@@ -36,7 +36,7 @@ fn either_carrier_identifies() {
         (Some("wrong"), Some("secret")),
     ] {
         match authenticate_admin_tokens(Some(&h), b, hd) {
-            AuthVerdict::Identify(p) => assert_eq!(p.id, ADMIN_TOKENS_PRINCIPAL_ID),
+            Verdict::Identity(p) => assert_eq!(p.subject, ADMIN_TOKENS_PRINCIPAL_ID),
             other => panic!("expected Identify, got {other:?} for ({b:?},{hd:?})"),
         }
     }
@@ -47,11 +47,11 @@ fn wrong_credential_rejects() {
     let h = hash("secret");
     assert_eq!(
         authenticate_admin_tokens(Some(&h), Some("nope"), None),
-        AuthVerdict::Reject
+        Verdict::Reject
     );
     assert_eq!(
         authenticate_admin_tokens(Some(&h), None, Some("nope")),
-        AuthVerdict::Reject
+        Verdict::Reject
     );
 }
 
@@ -72,7 +72,7 @@ fn a_jws_shaped_candidate_defers_to_the_next_chain_arm() {
     for (b, hd) in [(Some(jws), None), (None, Some(jws)), (Some(jws), Some(jws))] {
         assert_eq!(
             authenticate_admin_tokens(Some(&h), b, hd),
-            AuthVerdict::Pass,
+            Verdict::Pass,
             "a JWS-shaped candidate is another scheme's grammar and must reach the next arm \
              ({b:?}, {hd:?})"
         );
@@ -88,12 +88,12 @@ fn a_non_jws_wrong_credential_still_terminally_rejects() {
     for candidate in ["nope", "a.b", "a.b.c.d", "a..c", ".b.c", "a.b."] {
         assert_eq!(
             authenticate_admin_tokens(Some(&h), Some(candidate), None),
-            AuthVerdict::Reject,
+            Verdict::Reject,
             "`{candidate}` is addressed to this module and wrong; it must deny, not defer"
         );
         assert_eq!(
             authenticate_admin_tokens(Some(&h), None, Some(candidate)),
-            AuthVerdict::Reject,
+            Verdict::Reject,
             "`{candidate}` on the header carrier must deny too"
         );
     }
@@ -107,68 +107,58 @@ fn deferring_never_admits_and_never_widens_the_door() {
     let jws = "aaa.bbb.ccc";
     assert_eq!(
         authenticate_admin_tokens(Some(&h), Some(jws), None),
-        AuthVerdict::Pass
+        Verdict::Pass
     );
     // And the real token is still recognised on either carrier even when the OTHER carries a JWS
     // meant for a later arm — the both-carriers fold is untouched by the shape check.
     for (b, hd) in [(Some("secret"), Some(jws)), (Some(jws), Some("secret"))] {
         match authenticate_admin_tokens(Some(&h), b, hd) {
-            AuthVerdict::Identify(p) => assert_eq!(p.id, ADMIN_TOKENS_PRINCIPAL_ID),
+            Verdict::Identity(p) => assert_eq!(p.subject, ADMIN_TOKENS_PRINCIPAL_ID),
             other => panic!("expected Identify, got {other:?} for ({b:?},{hd:?})"),
         }
     }
 }
 
-// ── THE DROPPED-IN MODULE (`open`) ────────────────────────────────────────────────────────────
+// ── THE PLUGIN (`VerifyPlugin::open`) ───────────────────────────────────────────────────────
 
 /// `open` takes the digest, never the raw token, and refuses anything that is not one — with a
 /// message that does not echo what it was given.
 #[test]
-fn open_refuses_a_config_that_is_not_a_sha256_hex_digest() {
-    for cfg in [
-        "",
-        "   ",
-        "secret",
-        &hash("secret")[..63],
-        &format!("{}0", hash("secret")),
+fn open_refuses_settings_that_are_not_a_sha256_hex_digest() {
+    let h = hash("secret");
+    for settings in [
+        "".to_string(),
+        "\"\"".to_string(),
+        "\"   \"".to_string(),
+        "\"secret\"".to_string(),
+        format!("\"{}\"", &h[..63]),
+        format!("\"{h}0\""),
+        format!("\"{}\"", "zz".repeat(32)),
+        // The digest, but not as the JSON string the settings document is.
+        h.clone(),
+        format!("{{\"token\":\"{h}\"}}"),
     ] {
-        let err = open(cfg).err().unwrap_or_else(|| panic!("{cfg:?} opened"));
-        assert_eq!(
-            err,
-            "admin-tokens plugin config must be the admin token's SHA-256 digest as 64 hex \
-             characters (the value is not echoed)"
-        );
+        let err = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[])
+            .err()
+            .unwrap_or_else(|| panic!("{settings:?} opened"));
+        assert_eq!(err, NOT_A_DIGEST);
     }
-    let raw = "zz".repeat(32);
-    assert!(
-        open(&raw).is_err(),
-        "64 non-hex characters are not a digest"
-    );
 }
 
-/// The module `open` builds answers, over the ONE candidate, exactly what the linked function
-/// answers with that candidate on the Bearer carrier: same verdicts, same principal.
+/// The digest opens with surrounding whitespace and in either case.
 #[test]
-fn the_opened_module_judges_as_the_linked_function_does() {
+fn open_takes_the_digest_trimmed_in_either_case() {
     let h = hash("secret");
-    let module = open(&format!("  {}\n", h.to_ascii_uppercase())).expect("a digest opens");
-    assert_eq!(module.name(), "admin-tokens");
-    assert!(!module.cacheable(), "an in-process compare is never cached");
-    for candidate in [
-        None,
-        Some("secret"),
-        Some("wrong"),
-        Some(""),
-        Some("aaa.bbb.ccc"),
-    ] {
-        assert_eq!(
-            module.authenticate(candidate),
-            authenticate_admin_tokens(Some(&h), candidate, None),
-            "candidate {candidate:?}"
-        );
-    }
-    assert_eq!(
-        module.authenticate(Some("secret")),
-        AuthVerdict::Identify(Principal::from_id(ADMIN_TOKENS_PRINCIPAL_ID))
-    );
+    let settings = format!("\"  {}\\n\"", h.to_ascii_uppercase());
+    let plugin = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("opens");
+    assert_eq!(plugin.configured_hash, h);
+}
+
+/// The Statement names the module and its one carrier.
+#[test]
+fn the_statement_names_the_module_and_the_header_carrier() {
+    assert_eq!(STATEMENT.name.len, ADMIN_TOKENS_MODULE_NAME.len());
+    assert_eq!(TAIL.carriers_len, 1);
+    assert_eq!(TAIL.caps, busbar_contract::abi::auth::CAP_INBOUND);
+    assert_eq!(TAIL.facts, 0, "a rotatable compare is never cached");
 }
