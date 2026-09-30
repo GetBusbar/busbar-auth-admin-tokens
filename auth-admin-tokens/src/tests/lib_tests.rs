@@ -146,6 +146,18 @@ fn open_refuses_a_config_that_is_not_a_sha256_hex_digest() {
     );
 }
 
+/// The digest of the empty string is a blank admin token: refused, in either case, without echo.
+#[test]
+fn open_refuses_the_digest_of_an_empty_token() {
+    let d = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    assert_eq!(hash(""), d);
+    for cfg in [d.to_string(), d.to_ascii_uppercase(), format!(" {d}\n")] {
+        let err = open(&cfg).err().unwrap_or_else(|| panic!("{cfg:?} opened"));
+        assert!(err.contains("empty token"), "{err}");
+        assert!(!err.to_ascii_lowercase().contains(d), "{err}");
+    }
+}
+
 /// The module `open` builds answers, over the ONE candidate, exactly what the linked function
 /// answers with that candidate on the Bearer carrier: same verdicts, same principal.
 #[test]

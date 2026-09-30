@@ -138,6 +138,9 @@ impl AuthModule for AdminTokensModule {
     }
 }
 
+/// SHA-256 of the empty string: a blank admin token is refused, as the linked path refuses it.
+const EMPTY_TOKEN_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
 /// Construct the module from its config: the configured admin token's SHA-256 digest as 64 hex
 /// characters (the value the engine pre-computes; surrounding whitespace is ignored). Fail-closed:
 /// anything else is a load error, and the raw token is never accepted here, so no config file has
@@ -151,9 +154,15 @@ pub fn open(cfg: &str) -> Result<Box<dyn AuthModule>, String> {
                 .to_string(),
         );
     }
-    Ok(Box::new(AdminTokensModule {
-        configured_hash: configured_hash.to_ascii_lowercase(),
-    }))
+    let configured_hash = configured_hash.to_ascii_lowercase();
+    if configured_hash == EMPTY_TOKEN_SHA256 {
+        return Err(
+            "admin-tokens plugin config is the SHA-256 digest of an empty token, which is \
+             refused (the value is not echoed)"
+                .to_string(),
+        );
+    }
+    Ok(Box::new(AdminTokensModule { configured_hash }))
 }
 
 /// THE DROPPED-IN DOOR, compiled only into the dropped-in build (feature `dropped-in`): [`open`]
