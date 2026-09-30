@@ -154,11 +154,24 @@ fn open_takes_the_digest_trimmed_in_either_case() {
     assert_eq!(plugin.configured_hash, h);
 }
 
-/// The Statement names the module and its one carrier.
+/// The Statement names the module and its two credential lines.
 #[test]
 fn the_statement_names_the_module_and_the_header_carrier() {
     assert_eq!(STATEMENT.name.len, ADMIN_TOKENS_MODULE_NAME.len());
-    assert_eq!(TAIL.carriers_len, 1);
+    assert_eq!(TAIL.carriers_len, 2);
     assert_eq!(TAIL.caps, busbar_contract::abi::auth::CAP_INBOUND);
     assert_eq!(TAIL.facts, 0, "a rotatable compare is never cached");
+}
+
+/// The Bearer comes off the `authorization` line by 1.5.5's rule: the scheme in any case, a
+/// non-empty token; any other value presents no Bearer.
+#[test]
+fn the_bearer_is_read_off_the_authorization_line() {
+    assert_eq!(bearer_token(b"Bearer abc123"), Some("abc123"));
+    assert_eq!(bearer_token(b"bEaReR abc123"), Some("abc123"));
+    assert_eq!(bearer_token(b"Basic abc123"), None);
+    assert_eq!(bearer_token(b"Bearer "), None);
+    assert_eq!(bearer_token(b"Bearer"), None);
+    assert_eq!(bearer_token(b""), None);
+    assert_eq!(bearer_token(b"Bearer \xff"), None, "a non-UTF-8 value is not a Bearer");
 }

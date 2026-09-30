@@ -13,8 +13,9 @@
 //! ## One door, on the auth kind's memory ABI (THE DESIGN §11.4, §11.6)
 //!
 //! [`door::door`] is the plugin's `plugin_door!` door, built by the SDK's `auth_verify_door!` over
-//! [`AdminTokens`]: a `kind: auth` plugin that states `CAP_INBOUND` only, reads the `x-admin-token`
-//! carrier beside the credential (the Bearer), and judges on the spot. A build that LINKS this crate
+//! [`AdminTokens`]: a `kind: auth` plugin that states `CAP_INBOUND` only, reads its two credential
+//! lines (`authorization` for the Bearer, and `x-admin-token`), names both for the transport to strip
+//! whatever its verdict, and judges on the spot. A build that LINKS this crate
 //! registers that door as its `admin-tokens` row; the dropped-in build
 //! (`busbar-auth-admin-tokens-plugin`) exports the SAME door as `busbar_plugin_door`. Every verdict
 //! either way is [`authenticate_admin_tokens`]'s.
@@ -43,9 +44,19 @@ pub const ADMIN_TOKENS_PRINCIPAL_ID: &str = "admin";
 /// The module name: the `admin_auth:` chain entry this module answers.
 pub const ADMIN_TOKENS_MODULE_NAME: &str = "admin-tokens";
 
-/// The second carrier the operator token may arrive on (lower-case); the first is the Bearer, which
-/// the host hands `verify` as the credential.
+/// The second carrier the operator token may arrive on (lower-case); the first is the Bearer.
 pub const ADMIN_TOKEN_HEADER: &str = "x-admin-token";
+
+/// The line the Bearer arrives on (lower-case), as `Bearer <token>`.
+pub const AUTHORIZATION_HEADER: &str = "authorization";
+
+/// The token of an `Authorization` value in the Bearer scheme: the scheme matched case-insensitively,
+/// the token non-empty. Any other value (another scheme, non-UTF-8, no token) presents no Bearer.
+#[must_use]
+pub fn bearer_token(value: &[u8]) -> Option<&str> {
+    let (scheme, token) = std::str::from_utf8(value).ok()?.split_once(' ')?;
+    (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
+}
 
 /// The operator identity.
 fn operator() -> VerifiedIdentity {
@@ -183,27 +194,31 @@ impl VerifyPlugin for AdminTokens {
         })
     }
 
-    /// The Bearer is the credential and the `X-Admin-Token` header the carrier; both are put to
-    /// [`authenticate_admin_tokens`] in one call, so the fold is the module's own.
-    /// Whatever the verdict, the `X-Admin-Token` line is named for the transport to strip.
+    /// The Bearer (off the `authorization` line) and the `X-Admin-Token` line are put to
+    /// [`authenticate_admin_tokens`] in one call, so the fold is the module's own. Whatever the
+    /// verdict, both lines are named for the transport to strip: they are this module's credential
+    /// lines.
     fn verify(&self, request: &VerifyView<'_>) -> Answer {
         let verdict = authenticate_admin_tokens(
             Some(&self.configured_hash),
-            request.credential().map(text),
+            request.line(AUTHORIZATION_HEADER).and_then(bearer_token),
             request.line(ADMIN_TOKEN_HEADER).map(text),
         );
         Answer {
-            strips: vec![Strip::field(ADMIN_TOKEN_HEADER)],
+            strips: vec![
+                Strip::field(AUTHORIZATION_HEADER),
+                Strip::field(ADMIN_TOKEN_HEADER),
+            ],
             ..verdict.into()
         }
     }
 }
 
-/// The carriers `verify` reads beside the credential.
-const CARRIERS: &[AbiStr] = &[abi_str(ADMIN_TOKEN_HEADER)];
+/// The credential lines `verify` reads: the host lends exactly these.
+const CARRIERS: &[AbiStr] = &[abi_str(AUTHORIZATION_HEADER), abi_str(ADMIN_TOKEN_HEADER)];
 
 /// The auth tail: inbound only, judged on the spot, nothing cached (a compare against a value the
-/// operator can rotate is never worth caching), reading one header carrier.
+/// operator can rotate is never worth caching), reading its two credential lines.
 const TAIL: &AuthTail = &verify_tail(0, AuthPoints::HEAD, CARRIERS);
 
 /// What the plugin states: its name, version and the concurrency it serves.

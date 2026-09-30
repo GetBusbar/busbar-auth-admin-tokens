@@ -11,9 +11,11 @@
 //! directory and found by the loader's scan). Each arm is opened by the loader's auth rows on a real
 //! dispatcher and driven over the same carrier cases — the accepted token on either carrier or both,
 //! a wrong opaque token, a token in another scheme's grammar, none — each ON THE SPOT (ticket-less)
-//! and SUBMITTED (awaited), plus its refusal of settings that are not a digest. The two transcripts
-//! must agree, and every verdict must equal what `authenticate_admin_tokens` answers for the same
-//! carriers.
+//! and SUBMITTED (awaited), plus its refusal of settings that are not a digest. The host lends the
+//! request's field lines at the Head point, the Bearer as its `authorization` line. The two
+//! transcripts must agree; every verdict must equal what `authenticate_admin_tokens` answers for the
+//! same carriers, and every answer names both credential lines for the transport to strip, whatever
+//! its verdict.
 //!
 //! The RED arms are in the same file: the same cdylib dropped in under a THIRD-PARTY signature is a
 //! different row, and the dropped-in door opened over a ROTATED token's digest judges differently —
@@ -22,10 +24,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use busbar_auth_admin_tokens::{authenticate_admin_tokens, ADMIN_TOKEN_HEADER};
+use busbar_auth_admin_tokens::{
+    authenticate_admin_tokens, ADMIN_TOKEN_HEADER, AUTHORIZATION_HEADER,
+};
+use busbar_contract::abi::auth::AuthPoint;
 use busbar_contract::abi::sdk::auth_door::Verdict;
-use busbar_contract::auth_calls::{Verified, VerifyRequest};
-use busbar_contract::redacted::sha256_hex;
+use busbar_contract::auth_calls::{Verified, VerifyAnswer, VerifyRequest};
+use busbar_contract::redacted::{sha256_hex, Redacted};
 use busbar_plugin_loader::auth_axis::AuthRows;
 use busbar_plugin_loader::dispatch::{Budgets, DispatchConfig, Dispatcher};
 use busbar_plugin_loader::sign::{sign, Manifest, SigningKey, TrustPolicy};
@@ -155,14 +160,18 @@ fn dispatcher() -> Arc<Dispatcher> {
     }))
 }
 
-/// One carrier case as the host hands it to `verify`: the Bearer as the credential, the header as
-/// the plugin's named carrier.
+/// One carrier case as the host hands it to `verify` at the Head point: the Bearer on the
+/// `authorization` line, the token on the `x-admin-token` line.
 fn request(bearer: Option<&str>, header: Option<&str>) -> VerifyRequest {
+    let line = |name: &str, value: String| (name.to_string(), Redacted::new(value.into_bytes()));
+    let lines = bearer
+        .map(|b| line(AUTHORIZATION_HEADER, format!("Bearer {b}")))
+        .into_iter()
+        .chain(header.map(|h| line(ADMIN_TOKEN_HEADER, h.to_string())))
+        .collect();
     VerifyRequest {
-        credential: bearer.map(|b| b.as_bytes().to_vec()),
-        carriers: header
-            .map(|h| vec![(ADMIN_TOKEN_HEADER.to_string(), h.as_bytes().to_vec())])
-            .unwrap_or_default(),
+        point: AuthPoint::Head,
+        lines,
         method: "GET".into(),
         authority: "node.example".into(),
         path: "/admin/v1/keys".into(),
@@ -170,26 +179,32 @@ fn request(bearer: Option<&str>, header: Option<&str>) -> VerifyRequest {
     }
 }
 
-/// A verdict as the transcript spells it.
-fn spelled(v: &Verified) -> String {
-    match v {
+/// The lines every answer names for the transport to strip, as the transcript spells them.
+const STRIPS: &str = "[authorization, x-admin-token]";
+
+/// An answer as the transcript spells it: the verdict, the decision, the lines to strip.
+fn spelled(a: &VerifyAnswer) -> String {
+    let verdict = match &a.verified {
         Verified::Identity(id) => format!("Identity({})", id.subject),
         other => format!("{other:?}"),
-    }
+    };
+    let strips: Vec<&str> = a.strips.iter().map(|s| s.name.as_ref()).collect();
+    format!("{verdict} {:?} [{}]", a.decision, strips.join(", "))
 }
 
-/// The linked function's verdict, spelled the same way.
+/// The linked function's verdict, spelled the same way: an identity or a pass continues, a reject
+/// stops, and both credential lines are named whatever the verdict.
 fn expected(digest: &str, bearer: Option<&str>, header: Option<&str>) -> String {
-    match authenticate_admin_tokens(Some(digest), bearer, header) {
-        Verdict::Identity(id) => format!("Identity({})", id.subject),
-        Verdict::Reject => "Reject".into(),
-        Verdict::Pass => "Pass".into(),
-    }
+    let verdict = match authenticate_admin_tokens(Some(digest), bearer, header) {
+        Verdict::Identity(id) => format!("Identity({}) Continue", id.subject),
+        Verdict::Reject => "Reject Stop".into(),
+        Verdict::Pass => "Pass Continue".into(),
+    };
+    format!("{verdict} {STRIPS}")
 }
 
 /// What one door does, as one comparable transcript: the row's statement (every manifest field but
-/// the two describing a tarball), whether it is first-party, the opened instance's name, carriers
-/// and facts, its verdict for every case on the spot and submitted, and its refusal of settings
+/// the two describing a tarball), whether it is first-party, the opened instance's name and facts, its verdict for every case on the spot and submitted, and its refusal of settings
 /// that are not a digest.
 async fn transcript(registry: PluginRegistry, digest: &str) -> serde_json::Value {
     let registry: &'static PluginRegistry = Box::leak(Box::new(registry));
@@ -226,7 +241,6 @@ async fn transcript(registry: PluginRegistry, digest: &str) -> serde_json::Value
         "row": stated,
         "first_party": p.first_party(),
         "name": opened.name(),
-        "carriers": opened.carriers(),
         "facts": opened.facts(),
         "now": now,
         "submitted": submitted,
@@ -257,7 +271,6 @@ async fn the_linked_and_the_dropped_in_admin_tokens_plugin_are_one_plugin() {
         assert!(verdicts.contains(verdict), "no {verdict} among {verdicts}");
     }
     assert_eq!(linked["name"], "admin-tokens");
-    assert_eq!(linked["carriers"], serde_json::json!([ADMIN_TOKEN_HEADER]));
     assert_eq!(linked["facts"], 0, "a rotatable compare is never cached");
     assert!(
         linked["refused"].is_string(),
