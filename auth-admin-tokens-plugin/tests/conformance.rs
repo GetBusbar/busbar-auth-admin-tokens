@@ -207,7 +207,7 @@ fn expected(digest: &str, bearer: Option<&str>, header: Option<&str>) -> String 
 /// the two describing a tarball), whether it is first-party, the opened instance's name and facts, its verdict for every case on the spot and submitted, and its refusal of settings
 /// that are not a digest.
 async fn transcript(registry: PluginRegistry, digest: &str) -> serde_json::Value {
-    let registry: &'static PluginRegistry = Box::leak(Box::new(registry));
+    let registry = Arc::new(registry);
     let p = registry
         .resolve("admin-tokens")
         .expect("the alias resolves");
@@ -216,7 +216,7 @@ async fn transcript(registry: PluginRegistry, digest: &str) -> serde_json::Value
         signature: String::new(),
         ..p.manifest.clone()
     };
-    let rows = AuthRows::new(registry, dispatcher());
+    let rows = AuthRows::new(registry.clone(), dispatcher());
     let opened = rows
         .open("admin-tokens", "admin-tokens", &serde_json::json!(digest))
         .expect("the plugin opens over a digest");
