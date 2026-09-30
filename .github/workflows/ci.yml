@@ -21,4 +21,7 @@ jobs:
       busbar_checkout: false
       macos_test: "cargo test --workspace --locked"
       extra_test: ""
+      plugin_crate: busbar-auth-admin-tokens-plugin
+      plugin_kind: auth
+      plugin_alias: admin-tokens
     secrets: inherit

@@ -9,3 +9,27 @@ First-party signed kind:auth plugin cdylib: the built-in admin-tokens admin-auth
 
 [![ci](https://github.com/GetBusbar/busbar-auth-admin-tokens/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/GetBusbar/busbar-auth-admin-tokens/actions/workflows/ci.yml)
 <!-- fleet:header:end -->
+
+## What it is for
+
+`busbar-auth-admin-tokens` is a `kind: auth` busbar plugin.
+
+## Config
+
+Configured under the `admin-tokens` module name.
+
+## Build
+
+```bash
+cargo build --release -p busbar-auth-admin-tokens-plugin
+```
+
+## Tests
+
+```bash
+cargo test --workspace --locked
+```
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

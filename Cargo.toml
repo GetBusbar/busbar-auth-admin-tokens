@@ -1,18 +1,27 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# One repo per plugin (owner ruling, busbar 1.6.0): this repo holds the built-in `admin-tokens`
-# admin-auth module — the single operator admin token, compared in constant time across both
-# carriers — as a same-repo Cargo workspace laid out like store-mysql: the logic
-# (busbar-auth-admin-tokens, the rlib busbar's default build links at a pinned rev under its
-# `auth-admin-tokens` feature) and the thin cdylib that packages it, door on, as a droppable
-# `kind: auth` plugin (busbar-auth-admin-tokens-plugin).
+# RENDERED by `cargo xtask fleet render busbar-auth-admin-tokens` from GetBusbar/busbar's plugins.yaml and
+# .github/fleet/workspace-Cargo.toml; `cargo xtask fleet check` is red on any edit here.
 #
-# Its one busbar dependency is busbar-contract (busbar-plugin-loader too, dev-only for the
-# conformance test), a git dependency on GetBusbar/busbar pinned to the rev in `.busbar-ref`
-# field 1. No sibling-checkout path dependency ships in any manifest.
+# One repo per plugin, every repo a twin: this workspace is exactly two crates, the logic
+# (`auth-admin-tokens/`, the rlib a busbar build can link) and the thin cdylib that packages it as a
+# droppable `kind: auth` plugin (`auth-admin-tokens-plugin/`, crate `busbar-auth-admin-tokens-plugin`). Its busbar
+# dependencies are git dependencies on GetBusbar/busbar at the fleet pin (`.busbar-ref` field 1);
+# no sibling-checkout path dependency ships in any manifest.
 [workspace]
 resolver = "2"
 members = [
     "auth-admin-tokens",
     "auth-admin-tokens-plugin",
 ]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.98"
+license = "Apache-2.0"
+publish = false
+repository = "https://github.com/GetBusbar/busbar-auth-admin-tokens"
+
+[workspace.dependencies]
+busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "7a5b429041752e00375e120ab1547a8928c3dee4" }
+busbar-plugin-loader = { git = "https://github.com/GetBusbar/busbar", rev = "7a5b429041752e00375e120ab1547a8928c3dee4" }
