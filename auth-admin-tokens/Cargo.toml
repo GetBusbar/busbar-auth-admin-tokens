@@ -8,22 +8,14 @@ description = "The built-in `admin-tokens` admin-auth plugin for busbar: the sin
 license = "Apache-2.0"
 
 [lib]
-# rlib only: the linked door — a build that links this crate calls `authenticate_admin_tokens` (both
-# carriers, one constant-time fold) and, under `dropped-in`, hands the loader `BUSBAR_COLD_ENTRY`.
-# The dropped-in door's cdylib is `busbar-auth-admin-tokens-plugin` (same repo), which turns
-# `dropped-in` on: a cdylib here would be built in two feature variants (with and without the door)
-# whose git-dependency artifacts differ only by a metadata hash.
+# rlib only: the logic and its door. A build that LINKS this crate registers `door::door` as its
+# `admin-tokens` row (no symbol is exported from here); the dropped-in cdylib is
+# `busbar-auth-admin-tokens-plugin` (same repo), which exports the same door as `busbar_plugin_door`.
 crate-type = ["rlib"]
-
-[features]
-# THE DROPPED-IN DOOR (`door`): `open` registered as this image's one door through the contract's
-# `export_auth_plugin!`. OFF in a build that links this crate (the linked door is the function
-# itself, and a host image must not carry a second door registration); ON in
-# `busbar-auth-admin-tokens-plugin`, the cdylib a signed tarball carries.
-dropped-in = []
 
 [dependencies]
 # The one busbar crate this plugin names (#40: a plugin depends on the contract only), pinned to the
 # rev in the repo's `.busbar-ref`.
 busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "7a5b429041752e00375e120ab1547a8928c3dee4" }
-
+# The settings document (a JSON string holding the digest).
+serde_json = "1"
