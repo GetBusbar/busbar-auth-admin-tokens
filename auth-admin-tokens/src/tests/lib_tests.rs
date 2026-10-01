@@ -160,7 +160,12 @@ fn the_statement_names_the_module_and_the_header_carrier() {
     assert_eq!(STATEMENT.name.len, ADMIN_TOKENS_MODULE_NAME.len());
     assert_eq!(STATEMENT.mark_words_len, 2, "its two carriers are Statement word marks");
     assert_eq!(TAIL.caps, busbar_contract::abi::auth::CAP_INBOUND);
-    assert_eq!(TAIL.facts, 0, "a rotatable compare is never cached");
+    assert_eq!(
+        TAIL.facts,
+        busbar_contract::abi::auth::FACT_OPERATOR,
+        "the operator credential, and a rotatable compare is never cached"
+    );
+    assert_eq!(TAIL.operator_principal.len, ADMIN_TOKENS_PRINCIPAL_ID.len());
 }
 
 /// The Bearer comes off the `authorization` line by 1.5.5's rule: the scheme in any case, a

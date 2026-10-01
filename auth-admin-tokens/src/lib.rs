@@ -30,8 +30,8 @@
 use busbar_contract::abi::auth::{AuthPoints, AuthTail};
 use busbar_contract::abi::mechanism::door::{MarkWord, Statement};
 use busbar_contract::abi::sdk::auth_door::{
-    carrier, verify_tail, with_tail, Answer, Strip, Verdict, VerifiedIdentity, VerifyPlugin,
-    VerifyView,
+    carrier, verify_tail, with_operator, with_tail, Answer, Strip, Verdict, VerifiedIdentity,
+    VerifyPlugin, VerifyView,
 };
 use busbar_contract::abi::sdk::door::statement;
 use busbar_contract::redacted::{constant_time_eq, sha256_hex};
@@ -219,10 +219,15 @@ impl VerifyPlugin for AdminTokens {
 const CARRIERS: &[MarkWord] = &[carrier(AUTHORIZATION_HEADER), carrier(ADMIN_TOKEN_HEADER)];
 
 /// The auth tail: inbound only, judged on the spot, nothing cached (a compare against a value the
-/// operator can rotate is never worth caching), reading its two credential lines.
-const TAIL: &AuthTail = &verify_tail(0, AuthPoints::HEAD);
+/// operator can rotate is never worth caching), reading its two credential lines. It states that it
+/// IS the operator credential, and the principal id its identity carries: the host finds the
+/// operator credential's row by this fact, never by its name.
+const TAIL: &AuthTail = &with_operator(
+    verify_tail(0, AuthPoints::HEAD),
+    ADMIN_TOKENS_PRINCIPAL_ID,
+);
 
-/// What the plugin states: its name, version and the concurrency it serves.
+/// What the plugin states: its name, version, the concurrency it serves and its two carriers.
 pub const STATEMENT: Statement = with_tail(
     Statement {
         mark_words: CARRIERS.as_ptr(),

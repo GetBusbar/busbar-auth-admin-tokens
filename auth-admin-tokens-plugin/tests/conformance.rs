@@ -242,6 +242,7 @@ async fn transcript(registry: PluginRegistry, digest: &str) -> serde_json::Value
         "first_party": p.first_party(),
         "name": opened.name(),
         "facts": opened.facts(),
+        "operator": rows.operator(),
         "now": now,
         "submitted": submitted,
         "refused": refused,
@@ -271,7 +272,16 @@ async fn the_linked_and_the_dropped_in_admin_tokens_plugin_are_one_plugin() {
         assert!(verdicts.contains(verdict), "no {verdict} among {verdicts}");
     }
     assert_eq!(linked["name"], "admin-tokens");
-    assert_eq!(linked["facts"], 0, "a rotatable compare is never cached");
+    assert_eq!(
+        linked["facts"],
+        busbar_contract::abi::auth::FACT_OPERATOR,
+        "the operator credential, and a rotatable compare is never cached"
+    );
+    assert_eq!(
+        linked["operator"],
+        serde_json::json!(["admin-tokens", "admin"]),
+        "the host finds the operator credential's row by its Statement"
+    );
     assert!(
         linked["refused"].is_string(),
         "a raw token is refused as settings: {}",
