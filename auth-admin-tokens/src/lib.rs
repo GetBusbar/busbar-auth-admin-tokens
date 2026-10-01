@@ -28,12 +28,12 @@
 #![forbid(unsafe_code)]
 
 use busbar_contract::abi::auth::{AuthPoints, AuthTail};
-use busbar_contract::abi::mechanism::call::AbiStr;
-use busbar_contract::abi::mechanism::door::Statement;
+use busbar_contract::abi::mechanism::door::{MarkWord, Statement};
 use busbar_contract::abi::sdk::auth_door::{
-    verify_tail, with_tail, Answer, Strip, Verdict, VerifiedIdentity, VerifyPlugin, VerifyView,
+    carrier, verify_tail, with_tail, Answer, Strip, Verdict, VerifiedIdentity, VerifyPlugin,
+    VerifyView,
 };
-use busbar_contract::abi::sdk::door::{abi_str, statement};
+use busbar_contract::abi::sdk::door::statement;
 use busbar_contract::redacted::{constant_time_eq, sha256_hex};
 
 /// The fixed principal id the operator admin token identifies as. The built-in operator credential
@@ -214,16 +214,21 @@ impl VerifyPlugin for AdminTokens {
     }
 }
 
-/// The credential lines `verify` reads: the host lends exactly these.
-const CARRIERS: &[AbiStr] = &[abi_str(AUTHORIZATION_HEADER), abi_str(ADMIN_TOKEN_HEADER)];
+/// The credential lines `verify` reads, the Statement's carrier word marks: the host lends exactly
+/// these.
+const CARRIERS: &[MarkWord] = &[carrier(AUTHORIZATION_HEADER), carrier(ADMIN_TOKEN_HEADER)];
 
 /// The auth tail: inbound only, judged on the spot, nothing cached (a compare against a value the
 /// operator can rotate is never worth caching), reading its two credential lines.
-const TAIL: &AuthTail = &verify_tail(0, AuthPoints::HEAD, CARRIERS);
+const TAIL: &AuthTail = &verify_tail(0, AuthPoints::HEAD);
 
 /// What the plugin states: its name, version and the concurrency it serves.
 pub const STATEMENT: Statement = with_tail(
-    statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 64),
+    Statement {
+        mark_words: CARRIERS.as_ptr(),
+        mark_words_len: CARRIERS.len(),
+        ..statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 64)
+    },
     TAIL,
 );
 
