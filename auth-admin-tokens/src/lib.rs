@@ -161,7 +161,8 @@ pub const NOT_A_DIGEST: &str =
 
 /// The refusal of the digest of an empty token: a blank admin token is refused, as the linked path
 /// refuses it. It never echoes what it was given.
-pub const EMPTY_TOKEN: &str = "admin-tokens plugin config is the SHA-256 digest of an empty token, \
+pub const EMPTY_TOKEN: &str =
+    "admin-tokens plugin config is the SHA-256 digest of an empty token, \
                                which is refused (the value is not echoed)";
 
 /// SHA-256 of the empty string: the digest of a blank admin token.
