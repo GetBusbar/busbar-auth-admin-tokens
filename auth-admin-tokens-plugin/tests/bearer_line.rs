@@ -119,11 +119,26 @@ async fn the_bearer_on_the_authorization_line_is_judged() {
     let bearer = format!("Bearer {TOKEN}");
     let cased = format!("bEaReR {TOKEN}");
     let cases = [
-        (vec![(AUTHORIZATION, bearer.as_str())], format!("{operator} {both}")),
-        (vec![(AUTHORIZATION, cased.as_str())], format!("{operator} {both}")),
-        (vec![(AUTHORIZATION, "Bearer not-the-token")], format!("Reject {both}")),
-        (vec![(AUTHORIZATION, "Basic not-a-bearer")], format!("Pass {both}")),
-        (vec![(ADMIN_TOKEN_HEADER, TOKEN)], format!("{operator} {both}")),
+        (
+            vec![(AUTHORIZATION, bearer.as_str())],
+            format!("{operator} {both}"),
+        ),
+        (
+            vec![(AUTHORIZATION, cased.as_str())],
+            format!("{operator} {both}"),
+        ),
+        (
+            vec![(AUTHORIZATION, "Bearer not-the-token")],
+            format!("Reject {both}"),
+        ),
+        (
+            vec![(AUTHORIZATION, "Basic not-a-bearer")],
+            format!("Pass {both}"),
+        ),
+        (
+            vec![(ADMIN_TOKEN_HEADER, TOKEN)],
+            format!("{operator} {both}"),
+        ),
     ];
     for (lines, want) in cases {
         let now = door
