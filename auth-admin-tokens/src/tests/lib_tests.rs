@@ -173,5 +173,9 @@ fn the_bearer_is_read_off_the_authorization_line() {
     assert_eq!(bearer_token(b"Bearer "), None);
     assert_eq!(bearer_token(b"Bearer"), None);
     assert_eq!(bearer_token(b""), None);
-    assert_eq!(bearer_token(b"Bearer \xff"), None, "a non-UTF-8 value is not a Bearer");
+    assert_eq!(
+        bearer_token(b"Bearer \xff"),
+        None,
+        "a non-UTF-8 value is not a Bearer"
+    );
 }
