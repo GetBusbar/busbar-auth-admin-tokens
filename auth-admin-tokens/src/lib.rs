@@ -235,10 +235,7 @@ const CARRIERS: &[MarkWord] = &[carrier(AUTHORIZATION_HEADER), carrier(ADMIN_TOK
 /// operator can rotate is never worth caching), reading its two credential lines. It states that it
 /// IS the operator credential, and the principal id its identity carries: the host finds the
 /// operator credential's row by this fact, never by its name.
-const TAIL: &AuthTail = &with_operator(
-    verify_tail(0, AuthPoints::HEAD),
-    ADMIN_TOKENS_PRINCIPAL_ID,
-);
+const TAIL: &AuthTail = &with_operator(verify_tail(0, AuthPoints::HEAD), ADMIN_TOKENS_PRINCIPAL_ID);
 
 /// What the plugin states: its name, version, the concurrency it serves and its two carriers.
 pub const STATEMENT: Statement = with_tail(

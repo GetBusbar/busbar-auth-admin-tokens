@@ -193,7 +193,10 @@ fn open_takes_the_digest_trimmed_in_either_case() {
 #[test]
 fn the_statement_names_the_module_and_the_header_carrier() {
     assert_eq!(STATEMENT.name.len, ADMIN_TOKENS_MODULE_NAME.len());
-    assert_eq!(STATEMENT.mark_words_len, 2, "its two carriers are Statement word marks");
+    assert_eq!(
+        STATEMENT.mark_words_len, 2,
+        "its two carriers are Statement word marks"
+    );
     assert_eq!(TAIL.caps, busbar_contract::abi::auth::CAP_INBOUND);
     assert_eq!(
         TAIL.facts,
