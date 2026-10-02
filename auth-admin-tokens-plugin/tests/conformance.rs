@@ -82,6 +82,16 @@ fn cdylib() -> Vec<u8> {
     std::fs::read(found).expect("read the cdylib")
 }
 
+/// The door's own Statement rendering, as the lower-case hex a signed manifest carries (the
+/// design's One Statement: a dropped-in plugin is admitted against the rendering it states).
+fn rendering_hex() -> String {
+    let rendering =
+        busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door::door)
+            .expect("the door states itself")
+            .statement;
+    rendering.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// The statement both doors make: a first-party `kind: auth` plugin on the auth kind's memory ABI.
 fn statement() -> Manifest {
     Manifest {
@@ -101,6 +111,7 @@ fn statement() -> Manifest {
         schema_derived: false,
         host: None,
         declares: Default::default(),
+        statement: Some(rendering_hex()),
     }
 }
 

@@ -59,6 +59,8 @@ fn statement() -> Manifest {
         schema_derived: false,
         host: None,
         declares: Default::default(),
+        // A linked row states its Statement through its door; the manifest carries none.
+        statement: None,
     }
 }
 
