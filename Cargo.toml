@@ -23,5 +23,5 @@ publish = false
 repository = "https://github.com/GetBusbar/busbar-auth-admin-tokens"
 
 [workspace.dependencies]
-busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "e1d3d8b097201859751d77208e66249d98b50a4b" }
-busbar-plugin-loader = { git = "https://github.com/GetBusbar/busbar", rev = "e1d3d8b097201859751d77208e66249d98b50a4b" }
+busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "afc64b37c4d706729bfcd96cd234dfb4b16416a0" }
+busbar-plugin-loader = { git = "https://github.com/GetBusbar/busbar", rev = "afc64b37c4d706729bfcd96cd234dfb4b16416a0" }

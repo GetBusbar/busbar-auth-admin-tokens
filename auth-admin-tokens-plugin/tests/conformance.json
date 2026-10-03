@@ -1,0 +1,30 @@
+{
+  "settings": "\"da516aa0bded618a0a9b3b692c50bd1644e0aeec56dde3d086148c8f2a19d335\"",
+  "auth": {
+    "bad_settings": [
+      "\"the-raw-token\"",
+      "{ not json",
+      "\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\""
+    ],
+    "rotated_settings": "\"2f2e838152360aa9db3203e7df02d7cffde7fc77f58039ce31194e06e7674420\"",
+    "cases": [
+      { "credential": "the-operator-token", "carriers": {}, "verdict": "identity:admin" },
+      { "credential": null, "carriers": { "x-admin-token": "the-operator-token" }, "verdict": "identity:admin" },
+      { "credential": "the-operator-token", "carriers": { "x-admin-token": "the-operator-token" }, "verdict": "identity:admin" },
+      { "credential": "not-the-token", "carriers": { "x-admin-token": "the-operator-token" }, "verdict": "identity:admin" },
+      { "credential": "not-the-token", "carriers": {}, "verdict": "reject" },
+      { "credential": null, "carriers": { "x-admin-token": "not-the-token" }, "verdict": "reject" },
+      { "credential": "aaa.bbb.ccc", "carriers": {}, "verdict": "pass" },
+      { "credential": "aaa.bbb.ccc", "carriers": { "x-admin-token": "not-the-token" }, "verdict": "reject" },
+      { "credential": null, "carriers": {}, "verdict": "pass" },
+      { "credential": null, "carriers": { "authorization": "Bearer the-operator-token" }, "verdict": "identity:admin" },
+      { "credential": null, "carriers": { "authorization": "Bearer the-operator-token", "x-admin-token": "the-operator-token" }, "verdict": "identity:admin" },
+      { "credential": null, "carriers": { "authorization": "Bearer not-the-token", "x-admin-token": "the-operator-token" }, "verdict": "identity:admin" },
+      { "credential": null, "carriers": { "authorization": "Bearer not-the-token" }, "verdict": "reject" },
+      { "credential": null, "carriers": { "authorization": "Bearer aaa.bbb.ccc" }, "verdict": "pass" },
+      { "credential": null, "carriers": { "authorization": "Bearer aaa.bbb.ccc", "x-admin-token": "not-the-token" }, "verdict": "reject" },
+      { "credential": null, "carriers": { "authorization": "Basic dXNlcjpwYXNz" }, "verdict": "pass" }
+    ],
+    "never_echoed": ["the-operator-token", "the-raw-token"]
+  }
+}

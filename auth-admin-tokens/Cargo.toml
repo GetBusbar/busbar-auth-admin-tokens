@@ -16,6 +16,6 @@ crate-type = ["rlib"]
 [dependencies]
 # The one busbar crate this plugin names (#40: a plugin depends on the contract only), pinned to the
 # rev in the repo's `.busbar-ref`.
-busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "e1d3d8b097201859751d77208e66249d98b50a4b" }
+busbar-contract = { git = "https://github.com/GetBusbar/busbar", rev = "afc64b37c4d706729bfcd96cd234dfb4b16416a0" }
 # The settings document (a JSON string holding the digest).
 serde_json = "1"
