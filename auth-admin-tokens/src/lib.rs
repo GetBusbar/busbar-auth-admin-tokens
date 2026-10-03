@@ -14,8 +14,7 @@
 //!
 //! [`door::door`] is the plugin's `plugin_door!` door, built by the SDK's `auth_verify_door!` over
 //! [`AdminTokens`]: a `kind: auth` plugin that states `CAP_INBOUND` only, reads its two credential
-//! lines (`authorization` for the Bearer, and `x-admin-token`), names both for the transport to strip
-//! whatever its verdict, and judges on the spot. A build that LINKS this crate
+//! lines (`authorization` for the Bearer, and `x-admin-token`), and judges on the spot. A build that LINKS this crate
 //! registers that door as its `admin-tokens` row; the dropped-in build
 //! (`busbar-auth-admin-tokens-plugin`) exports the SAME door as `busbar_plugin_door`. Every verdict
 //! either way is [`authenticate_admin_tokens`]'s.
@@ -27,11 +26,10 @@
 
 #![forbid(unsafe_code)]
 
-use busbar_contract::abi::auth::{AuthPoints, AuthTail};
+use busbar_contract::abi::auth::AuthTail;
 use busbar_contract::abi::mechanism::door::{MarkWord, Statement};
 use busbar_contract::abi::sdk::auth_door::{
-    carrier, verify_tail, with_operator, with_tail, Answer, Strip, Verdict, VerifiedIdentity,
-    VerifyPlugin, VerifyView,
+    carrier, verify_tail, with_tail, Verdict, VerifiedIdentity, VerifyPlugin, VerifyView,
 };
 use busbar_contract::abi::sdk::door::statement;
 use busbar_contract::redacted::{constant_time_eq, sha256_hex};
@@ -208,22 +206,19 @@ impl VerifyPlugin for AdminTokens {
     }
 
     /// The Bearer (off the `authorization` line) and the `X-Admin-Token` line are put to
-    /// [`authenticate_admin_tokens`] in one call, so the fold is the module's own. Whatever the
-    /// verdict, both lines are named for the transport to strip: they are this module's credential
-    /// lines.
-    fn verify(&self, request: &VerifyView<'_>) -> Answer {
-        let verdict = authenticate_admin_tokens(
+    /// [`authenticate_admin_tokens`] in one call, so the fold is the module's own. The Bearer is
+    /// the host's extracted candidate credential; a host that lends none presents the Bearer on its
+    /// `authorization` carrier line, which is read the same way.
+    fn verify(&self, request: &VerifyView<'_>) -> Verdict {
+        let bearer = request
+            .credential()
+            .map(text)
+            .or_else(|| request.carrier(AUTHORIZATION_HEADER).and_then(bearer_token));
+        authenticate_admin_tokens(
             Some(&self.configured_hash),
-            request.line(AUTHORIZATION_HEADER).and_then(bearer_token),
-            request.line(ADMIN_TOKEN_HEADER).map(text),
-        );
-        Answer {
-            strips: vec![
-                Strip::field(AUTHORIZATION_HEADER),
-                Strip::field(ADMIN_TOKEN_HEADER),
-            ],
-            ..verdict.into()
-        }
+            bearer,
+            request.carrier(ADMIN_TOKEN_HEADER).map(text),
+        )
     }
 }
 
@@ -232,10 +227,9 @@ impl VerifyPlugin for AdminTokens {
 const CARRIERS: &[MarkWord] = &[carrier(AUTHORIZATION_HEADER), carrier(ADMIN_TOKEN_HEADER)];
 
 /// The auth tail: inbound only, judged on the spot, nothing cached (a compare against a value the
-/// operator can rotate is never worth caching), reading its two credential lines. It states that it
-/// IS the operator credential, and the principal id its identity carries: the host finds the
-/// operator credential's row by this fact, never by its name.
-const TAIL: &AuthTail = &with_operator(verify_tail(0, AuthPoints::HEAD), ADMIN_TOKENS_PRINCIPAL_ID);
+/// operator can rotate is never worth caching), reading its two credential lines (the Statement's
+/// carrier word marks).
+const TAIL: &AuthTail = &verify_tail(0);
 
 /// What the plugin states: its name, version, the concurrency it serves and its two carriers.
 pub const STATEMENT: Statement = with_tail(
