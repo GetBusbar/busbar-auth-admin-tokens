@@ -112,6 +112,7 @@ fn statement() -> Manifest {
         host: None,
         declares: Default::default(),
         statement: Some(rendering_hex()),
+        former_names: Vec::new(),
     }
 }
 
@@ -324,4 +325,19 @@ async fn the_linked_and_the_dropped_in_admin_tokens_plugin_are_one_plugin() {
         "a door judging another token must not compare equal"
     );
     assert!(!rotated["now"].to_string().contains("Identity"));
+}
+
+// THE PUBLISHED CONFORMANCE SUITE, RUN BY THIS PLUGIN (THE DESIGN §2 "Each plugin tests itself";
+// Part 2 #2: each kind has ONE suite): busbar's auth suite at the commit this repo pins
+// (`.busbar-ref`) drives the door two ways through the one loader, LINKED (the logic crate's
+// `door`) and DROPPED IN (this crate's built cdylib), over the auth kind's inbound script with the
+// inputs in `conformance.json`: the settings are the operator token's SHA-256 digest (a JSON
+// string), the cases are the carrier cases above (the token on either line, beside a wrong one, a
+// wrong opaque token, another scheme's JWS, none), and the rotated settings are another token's
+// digest. Every step's crossings exactly at the script's pin, the two folds equal, and the suite's
+// RED arms kept. `plugin-ci.yml` runs it under `--release`.
+busbar_plugin_loader::conformance_suite! {
+    door: busbar_auth_admin_tokens::door::door,
+    cdylib: "busbar_auth_admin_tokens_plugin",
+    inputs: include_str!("conformance.json"),
 }
