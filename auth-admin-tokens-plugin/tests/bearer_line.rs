@@ -61,6 +61,7 @@ fn statement() -> Manifest {
         declares: Default::default(),
         // A linked row states its Statement through its door; the manifest carries none.
         statement: None,
+        former_names: Vec::new(),
     }
 }
 
