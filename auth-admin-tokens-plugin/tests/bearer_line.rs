@@ -28,7 +28,7 @@ use busbar_auth_admin_tokens::{
 use busbar_contract::abi::auth::AuthPoint;
 use busbar_contract::abi::sdk::auth_door::Verdict;
 use busbar_contract::auth_calls::{AuthCalls, Verified, VerifyAnswer, VerifyRequest};
-use busbar_contract::redacted::{sha256_hex, Redacted};
+use busbar_contract::sha256_hex;
 use busbar_plugin_loader::auth_axis::AuthRows;
 use busbar_plugin_loader::dispatch::{Budgets, DispatchConfig, Dispatcher};
 use busbar_plugin_loader::sign::Manifest;
@@ -90,7 +90,7 @@ fn request(lines: &[(&str, &str)]) -> VerifyRequest {
         point: AuthPoint::Head,
         lines: lines
             .iter()
-            .map(|(n, v)| ((*n).to_string(), Redacted::new(v.as_bytes().to_vec())))
+            .map(|(n, v)| ((*n).to_string(), v.as_bytes().to_vec().into()))
             .collect(),
         method: "GET".into(),
         authority: "node.example".into(),

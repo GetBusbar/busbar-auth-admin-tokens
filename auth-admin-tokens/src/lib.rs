@@ -34,7 +34,7 @@ use busbar_contract::abi::sdk::auth_door::{
     VerifyPlugin, VerifyView,
 };
 use busbar_contract::abi::sdk::door::statement;
-use busbar_contract::redacted::{constant_time_eq, sha256_hex};
+use busbar_contract::{constant_time_eq, sha256_hex};
 
 /// The fixed principal id the operator admin token identifies as. The built-in operator credential
 /// carries FULL admin scope by definition (it is the root credential the deployment was born with);

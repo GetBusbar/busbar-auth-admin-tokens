@@ -29,7 +29,7 @@
 
 use busbar_auth_admin_tokens::{authenticate_admin_tokens, ADMIN_TOKENS_PRINCIPAL_ID};
 use busbar_contract::abi::sdk::auth_door::Verdict;
-use busbar_contract::redacted::sha256_hex;
+use busbar_contract::sha256_hex;
 
 fn hash(s: &str) -> String {
     sha256_hex(s.as_bytes())
