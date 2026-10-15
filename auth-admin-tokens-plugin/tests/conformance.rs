@@ -30,7 +30,7 @@ use busbar_auth_admin_tokens::{
 use busbar_contract::abi::auth::AuthPoint;
 use busbar_contract::abi::sdk::auth_door::Verdict;
 use busbar_contract::auth_calls::{Verified, VerifyAnswer, VerifyRequest};
-use busbar_contract::redacted::{sha256_hex, Redacted};
+use busbar_contract::sha256_hex;
 use busbar_plugin_loader::auth_axis::AuthRows;
 use busbar_plugin_loader::dispatch::{Budgets, DispatchConfig, Dispatcher};
 use busbar_plugin_loader::sign::{sign, Manifest, SigningKey, TrustPolicy};
@@ -163,7 +163,7 @@ fn dispatcher() -> Arc<Dispatcher> {
 /// One carrier case as the host hands it to `verify` at the Head point: the Bearer on the
 /// `authorization` line, the token on the `x-admin-token` line.
 fn request(bearer: Option<&str>, header: Option<&str>) -> VerifyRequest {
-    let line = |name: &str, value: String| (name.to_string(), Redacted::new(value.into_bytes()));
+    let line = |name: &str, value: String| (name.to_string(), value.into_bytes().into());
     let lines = bearer
         .map(|b| line(AUTHORIZATION_HEADER, format!("Bearer {b}")))
         .into_iter()
