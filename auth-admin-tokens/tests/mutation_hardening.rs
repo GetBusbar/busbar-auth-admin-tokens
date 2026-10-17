@@ -18,14 +18,10 @@
 //! tests below drive that with empty strings, random-looking bytes-as-string, JWT-shaped-but-wrong
 //! strings, and other garbage, all of which must fall through to `Pass`/`Reject`, never `Identify`.
 //!
-//! ## A JWS-shaped mismatch DEFERS (`Pass`); it does not terminally `Reject`
+//! ## A JWS-shaped mismatch REJECTS, as every 1.5.5 mismatch did
 //!
-//! A candidate shaped like a JWS/JWT compact serialization (three non-empty dot-separated
-//! segments) is never admin-tokens' own credential grammar — it belongs to a different scheme
-//! (e.g. an OIDC/AD admin module later in the same `admin_auth:` chain, sharing the
-//! `Authorization: Bearer` carrier). Such a candidate must `Pass` (defer) so that later arm stays
-//! reachable, not `Reject` and short-circuit the whole chain. A non-JWS-shaped wrong candidate is
-//! still a genuine "addressed to this module and wrong" attempt and must `Reject`.
+//! A presented credential that does not match is `Reject`, terminal in the `admin_auth:` chain,
+//! whatever its shape: 1.5.5 never passed a wrong token on to the next module.
 
 use busbar_auth_admin_tokens::{authenticate_admin_tokens, ADMIN_TOKENS_PRINCIPAL_ID};
 use busbar_contract::abi::sdk::auth_door::Verdict;
@@ -113,31 +109,27 @@ fn wrong_credential_of_any_shape_rejects_not_passes() {
     }
 }
 
-/// A mismatched but JWS-SHAPED credential (three non-empty dot-separated segments — the compact
-/// serialization a real JWT/JWS uses) must `Pass` (defer), never `Reject`. It is not admin-tokens'
-/// credential grammar, so a terminal `Reject` here short-circuits the `admin_auth:` chain before a
-/// later, JWT-consuming module (OIDC/AD) ever sees it.
+/// A mismatched JWS-SHAPED credential (three non-empty dot-separated segments) `Reject`s like any
+/// other mismatch, never `Pass`.
 #[test]
-fn jws_shaped_mismatch_defers_not_rejects() {
+fn jws_shaped_mismatch_rejects_not_passes() {
     let h = hash("secret");
     for cred in ["a.b.c", "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.sig", "x.y.z"] {
         assert_eq!(
             authenticate_admin_tokens(Some(&h), Some(cred), None),
-            Verdict::Pass,
-            "JWS-shaped candidate {cred:?} on bearer carrier must Pass (defer), not Reject"
+            Verdict::Reject,
+            "JWS-shaped candidate {cred:?} on bearer carrier must Reject"
         );
         assert_eq!(
             authenticate_admin_tokens(Some(&h), None, Some(cred)),
-            Verdict::Pass,
-            "JWS-shaped candidate {cred:?} on header carrier must Pass (defer), not Reject"
+            Verdict::Reject,
+            "JWS-shaped candidate {cred:?} on header carrier must Reject"
         );
     }
 }
 
-/// A non-JWS-shaped wrong credential on one carrier still `Reject`s the whole verdict even when the
-/// OTHER carrier independently carries a JWS-shaped (deferring) candidate — the non-JWS-shaped
-/// carrier genuinely addressed this module and was wrong, and that must not be masked by the other
-/// carrier's defer.
+/// A wrong credential on one carrier `Reject`s the whole verdict whatever the OTHER carrier's
+/// shape.
 #[test]
 fn mixed_carriers_non_jws_wrong_still_rejects() {
     let h = hash("secret");
