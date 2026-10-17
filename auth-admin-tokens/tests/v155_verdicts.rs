@@ -11,7 +11,7 @@ use busbar_contract::abi::sdk::auth_door::Verdict;
 use busbar_contract::sha256_hex;
 
 /// 1.5.5 ended every mismatch in `Reject`, terminal in the admin chain: a wrong token shaped like
-/// a JWS is not passed on to a later `admin_auth:` module.
+/// a JWS is not passed on to the next `admin_auth:` module.
 #[test]
 fn a_wrong_jws_shaped_token_rejects_as_in_1_5_5() {
     let h = sha256_hex(b"secret");

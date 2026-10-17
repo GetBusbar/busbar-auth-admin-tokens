@@ -50,11 +50,24 @@ pub const ADMIN_TOKEN_HEADER: &str = "x-admin-token";
 /// The line the Bearer arrives on (lower-case), as `Bearer <token>`.
 pub const AUTHORIZATION_HEADER: &str = "authorization";
 
-/// The token of an `Authorization` value in the Bearer scheme: the scheme matched case-insensitively,
-/// the token non-empty. Any other value (another scheme, non-UTF-8, no token) presents no Bearer.
+/// A field value as header text, as 1.5.5 read it (`HeaderValue::to_str`): visible ASCII, space or
+/// tab; any other byte makes the value no text at all.
+fn header_text(value: &[u8]) -> Option<&str> {
+    if !value
+        .iter()
+        .all(|&b| b == b'\t' || (0x20..0x7f).contains(&b))
+    {
+        return None;
+    }
+    std::str::from_utf8(value).ok()
+}
+
+/// The token of an `Authorization` value in the Bearer scheme: the value header text, the scheme
+/// matched case-insensitively, the token non-empty. Any other value (another scheme, not header
+/// text, no token) presents no Bearer (1.5.5's `to_str` then `extract_bearer_token`).
 #[must_use]
 pub fn bearer_token(value: &[u8]) -> Option<&str> {
-    let (scheme, token) = std::str::from_utf8(value).ok()?.split_once(' ')?;
+    let (scheme, token) = header_text(value)?.split_once(' ')?;
     (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
 }
 
@@ -78,21 +91,9 @@ fn operator() -> VerifiedIdentity {
 /// `None` hash (no admin token configured) ⇒ `Pass` — this module has nothing to judge; a chain
 /// that ends all-`Pass` is denied (fail-closed), preserving "admin API disabled without a token".
 ///
-/// SHAPE PRE-CHECK — THE CHAIN HAS TO COMPOSE. A candidate shaped like a JWS/JWT compact
-/// serialization (three non-empty dot-separated segments) is never this module's credential
-/// grammar: admin-tokens compares an opaque token HASH, it does not parse structured tokens. Such a
-/// candidate belongs to a different scheme — typically an OIDC/AD admin module configured later in
-/// the same `admin_auth:` chain, which legitimately shares the `Authorization: Bearer` carrier.
-/// `Reject` is TERMINAL in the admin chain, so rejecting it here would deny the request before that
-/// arm ever ran.
-///
-/// Fail-closed but NON-TERMINAL: this module still never identifies such a candidate; what changes
-/// is that a carrier which is absent, or present but JWS-shaped, does not count as "this module was
-/// addressed", so a JWS-shaped mismatch alone DEFERS (`Pass`) and keeps the next arm reachable. A
-/// carrier that is present and NOT JWS-shaped is a genuine wrong-credential attempt against this
-/// module and still `Reject`s. The shape test reads only the PUBLIC candidate string and never the
-/// compare result, and both constant-time hash compares still run unconditionally on every
-/// presented carrier regardless of shape.
+/// A credential presented and not matching is a wrong credential, whatever its shape: `Reject`,
+/// terminal in the admin chain, exactly as 1.5.5 ended every mismatch. A JWS/JWT-shaped wrong token
+/// is not passed on to the next `admin_auth:` module.
 #[must_use]
 pub fn authenticate_admin_tokens(
     configured_hash: Option<&str>,
@@ -103,13 +104,9 @@ pub fn authenticate_admin_tokens(
         return Verdict::Pass;
     };
     if bearer.is_none() && header.is_none() {
-        // No credential presented for this module — defer (the chain's all-Pass denies).
+        // No credential presented for this module: Pass (the chain's all-Pass denies).
         return Verdict::Pass;
     }
-    // Read off the PUBLIC candidate strings only, BEFORE either compare, so no branch below can
-    // depend on a compare result: the constant-time fold is untouched.
-    let bearer_is_jws = bearer.is_some_and(is_jws_shaped);
-    let header_is_jws = header.is_some_and(is_jws_shaped);
     let bearer_match = u8::from(
         bearer
             .map(|b| constant_time_eq(&sha256_hex(b.as_bytes()), configured_hash))
@@ -123,35 +120,8 @@ pub fn authenticate_admin_tokens(
     if std::hint::black_box(bearer_match | header_match) != 0 {
         return Verdict::Identity(operator());
     }
-    // Only a carrier that was actually presented AND is not JWS-shaped counts as "addressed to this
-    // module, and wrong" — that still terminally denies. A carrier that is absent, or present but
-    // carrying some other scheme's grammar, defers instead of short-circuiting the chain.
-    let bearer_addressed_me = bearer.is_some() && !bearer_is_jws;
-    let header_addressed_me = header.is_some() && !header_is_jws;
-    if bearer_addressed_me || header_addressed_me {
-        Verdict::Reject
-    } else {
-        Verdict::Pass
-    }
-}
-
-/// Whether `candidate` is shaped like a JWS/JWT compact serialization: exactly three dot-separated
-/// segments, none of them empty (`header.payload.signature`).
-///
-/// A pure SHAPE test — it says nothing about validity, signature or issuer, and is never used to
-/// admit anything. Its only job is to recognise "this is not admin-tokens' grammar" so the chain
-/// can carry the candidate on to the arm whose grammar it IS.
-fn is_jws_shaped(candidate: &str) -> bool {
-    let mut segments = candidate.split('.');
-    let (Some(a), Some(b), Some(c), None) = (
-        segments.next(),
-        segments.next(),
-        segments.next(),
-        segments.next(),
-    ) else {
-        return false;
-    };
-    !a.is_empty() && !b.is_empty() && !c.is_empty()
+    // A credential was presented (at least one carrier is `Some`) and neither matched.
+    Verdict::Reject
 }
 
 /// The refusal of settings that are not a digest. It never echoes what it was given.
@@ -188,10 +158,11 @@ pub fn digest_of(settings: &[u8]) -> Result<String, &'static str> {
     Ok(digest)
 }
 
-/// A carrier's value as the text the compare hashes; a non-UTF-8 value is not this module's
-/// grammar and is judged as the wrong credential it is.
-fn text(bytes: &[u8]) -> &str {
-    std::str::from_utf8(bytes).unwrap_or("\u{fffd}")
+/// The `X-Admin-Token` line as 1.5.5 read it (`extract_admin_header_token`: `to_str().ok()` then
+/// `.filter(|t| !t.is_empty())`): a value that is not header text, or is blank, is ABSENT, never a
+/// presented wrong credential.
+fn header_token(value: &[u8]) -> Option<&str> {
+    header_text(value).filter(|t| !t.is_empty())
 }
 
 /// THE PLUGIN: the configured admin token's SHA-256 hex digest (never the raw token).
@@ -215,7 +186,7 @@ impl VerifyPlugin for AdminTokens {
         let verdict = authenticate_admin_tokens(
             Some(&self.configured_hash),
             request.line(AUTHORIZATION_HEADER).and_then(bearer_token),
-            request.line(ADMIN_TOKEN_HEADER).map(text),
+            request.line(ADMIN_TOKEN_HEADER).and_then(header_token),
         );
         Answer {
             strips: vec![

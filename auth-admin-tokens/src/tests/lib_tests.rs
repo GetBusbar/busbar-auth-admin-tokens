@@ -42,8 +42,7 @@ fn either_carrier_identifies() {
     }
 }
 
-/// A configured token that is itself JWS-shaped still identifies: the compare runs before the
-/// shape deferral.
+/// A configured token that is itself JWS-shaped identifies.
 #[test]
 fn a_jws_shaped_configured_token_identifies() {
     let token = "abc.def.ghi";
@@ -74,29 +73,10 @@ fn wrong_credential_rejects() {
     );
 }
 
-// ── THE CHAIN HAS TO COMPOSE ──────────────────────────────────────────────────────────────────
+// ── 1.5.5's CHAIN RULE ────────────────────────────────────────────────────────────────────
 //
-// `Reject` is TERMINAL in the admin chain: the first module that returns one denies the request
-// and no later arm runs. This module's grammar is an OPAQUE token compared by hash — it does not
-// parse structured tokens — so a JWS/JWT-shaped candidate was never addressed to it. Rejecting one
-// denied a credential meant for a later `admin_auth:` arm (an OIDC/AD module sharing the
-// `Authorization: Bearer` carrier) before that arm was ever asked. It must DEFER instead.
-
-#[test]
-fn a_jws_shaped_candidate_defers_to_the_next_chain_arm() {
-    let h = hash("secret");
-    // Three dot-separated non-empty segments: the compact JWS serialization every OIDC/AD admin
-    // module speaks. Presented on either carrier, on both, and mixed with an absent one.
-    let jws = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJvcGVyYXRvciJ9.c2ln";
-    for (b, hd) in [(Some(jws), None), (None, Some(jws)), (Some(jws), Some(jws))] {
-        assert_eq!(
-            authenticate_admin_tokens(Some(&h), b, hd),
-            Verdict::Pass,
-            "a JWS-shaped candidate is another scheme's grammar and must reach the next arm \
-             ({b:?}, {hd:?})"
-        );
-    }
-}
+// `Reject` is TERMINAL in the admin chain, and 1.5.5 ended every presented mismatch in it,
+// whatever the candidate's shape (`v155_verdicts.rs` holds the JWS-shaped cases).
 
 #[test]
 fn a_non_jws_wrong_credential_still_terminally_rejects() {
@@ -108,7 +88,7 @@ fn a_non_jws_wrong_credential_still_terminally_rejects() {
         assert_eq!(
             authenticate_admin_tokens(Some(&h), Some(candidate), None),
             Verdict::Reject,
-            "`{candidate}` is addressed to this module and wrong; it must deny, not defer"
+            "`{candidate}` is addressed to this module and wrong; it must deny, not pass"
         );
         assert_eq!(
             authenticate_admin_tokens(Some(&h), None, Some(candidate)),
@@ -119,23 +99,35 @@ fn a_non_jws_wrong_credential_still_terminally_rejects() {
 }
 
 #[test]
-fn deferring_never_admits_and_never_widens_the_door() {
+fn a_jws_shaped_wrong_token_never_admits_and_the_fold_still_finds_the_token() {
     let h = hash("secret");
-    // The deferral is a PASS, never an Identify: this module admits exactly one thing, the
-    // configured token, and a shape check may not become a second way in.
     let jws = "aaa.bbb.ccc";
     assert_eq!(
         authenticate_admin_tokens(Some(&h), Some(jws), None),
-        Verdict::Pass
+        Verdict::Reject
     );
-    // And the real token is still recognised on either carrier even when the OTHER carries a JWS
-    // meant for a later arm — the both-carriers fold is untouched by the shape check.
+    // The real token is still recognised on either carrier even when the OTHER carries a JWS.
     for (b, hd) in [(Some("secret"), Some(jws)), (Some(jws), Some("secret"))] {
         match authenticate_admin_tokens(Some(&h), b, hd) {
             Verdict::Identity(p) => assert_eq!(p.subject, ADMIN_TOKENS_PRINCIPAL_ID),
             other => panic!("expected Identify, got {other:?} for ({b:?},{hd:?})"),
         }
     }
+}
+
+/// The `X-Admin-Token` line as 1.5.5 read it: blank or not header text is absent.
+#[test]
+fn a_blank_or_non_text_admin_header_is_absent() {
+    for value in [
+        &b""[..],
+        "t\u{f6}k\u{e9}n".as_bytes(),
+        b"tok\x01en",
+        b"\xff",
+    ] {
+        assert_eq!(header_token(value), None, "{value:?}");
+    }
+    assert_eq!(header_token(b"the-token"), Some("the-token"));
+    assert_eq!(header_token(b"a b\tc"), Some("a b\tc"));
 }
 
 // ── THE PLUGIN (`VerifyPlugin::open`) ───────────────────────────────────────────────────────
