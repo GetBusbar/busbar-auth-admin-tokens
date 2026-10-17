@@ -77,6 +77,7 @@ fn opened() -> Arc<dyn AuthCalls> {
         workers: 2,
         budgets: Budgets::default(),
         watchdog_period: Duration::from_millis(20),
+        ..Default::default()
     }));
     let digest = sha256_hex(TOKEN.as_bytes());
     AuthRows::new(Arc::new(registry), dispatcher)
