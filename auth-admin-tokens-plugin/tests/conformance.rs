@@ -163,14 +163,17 @@ fn dropped(tag: &str, lib: &[u8], signer: &SigningKey) -> PluginRegistry {
     registry
 }
 
-/// The process's dispatcher, as the composition root builds one.
+/// The process's dispatcher, as the composition root builds one: lent a seal, so a verify reveals
+/// the credential lines it lends the door (a dispatcher lent none refuses every reveal).
 fn dispatcher() -> Arc<Dispatcher> {
-    Arc::new(Dispatcher::new(DispatchConfig {
+    let d = Dispatcher::new(DispatchConfig {
         workers: 2,
         budgets: Budgets::default(),
         watchdog_period: Duration::from_millis(20),
         ..Default::default()
-    }))
+    });
+    assert!(d.lend_seal(busbar_contract::plugin::TestKernelSeal));
+    Arc::new(d)
 }
 
 /// One carrier case as the host hands it to `verify` at the Head point: the Bearer on the
