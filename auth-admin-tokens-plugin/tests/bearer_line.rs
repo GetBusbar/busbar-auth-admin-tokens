@@ -73,11 +73,15 @@ fn opened() -> Arc<dyn AuthCalls> {
             busbar_auth_admin_tokens::door::door,
         )])
         .expect("the linked door admits the plugin");
-    let dispatcher = Arc::new(Dispatcher::new(DispatchConfig {
+    let dispatcher = Dispatcher::new(DispatchConfig {
         workers: 2,
         budgets: Budgets::default(),
         watchdog_period: Duration::from_millis(20),
-    }));
+        ..Default::default()
+    });
+    // Lent a seal as the composition root lends the kernel's: a verify reveals the lines it lends.
+    assert!(dispatcher.lend_seal(busbar_contract::plugin::TestKernelSeal));
+    let dispatcher = Arc::new(dispatcher);
     let digest = sha256_hex(TOKEN.as_bytes());
     AuthRows::new(Arc::new(registry), dispatcher)
         .open("admin-tokens", "admin-tokens", &serde_json::json!(digest))
