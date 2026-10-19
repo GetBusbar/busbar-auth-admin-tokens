@@ -7,6 +7,9 @@ rust-version = "1.97"
 description = "The built-in `admin-tokens` admin-auth plugin for busbar: the single operator admin token, compared in constant time across both carriers."
 license = "Apache-2.0"
 
+[lints]
+workspace = true
+
 [lib]
 # rlib only: the logic and its door. A build that LINKS this crate registers `door::door` as its
 # `admin-tokens` row (no symbol is exported from here); the dropped-in cdylib is
