@@ -122,10 +122,7 @@ fn statement() -> Manifest {
 /// THE LINKED DOOR: the logic crate's `door` through `PluginRegistry::link`.
 fn linked() -> PluginRegistry {
     PluginRegistry::empty()
-        .link(vec![LinkedPlugin::door(
-            statement(),
-            busbar_auth_admin_tokens::door,
-        )])
+        .link(vec![LinkedPlugin::of_loaded(statement(), loaded())])
         .expect("the linked door admits the plugin")
 }
 

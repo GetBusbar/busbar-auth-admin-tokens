@@ -26,7 +26,7 @@ use busbar_contract::abi::auth::AuthPoint;
 use busbar_contract::auth_calls::{AuthCalls, Verified, VerifyAnswer, VerifyRequest};
 use busbar_contract::sha256_hex;
 use busbar_plugin_loader::auth_axis::AuthRows;
-use busbar_plugin_loader::dispatch::{Budgets, DispatchConfig, Dispatcher};
+use busbar_plugin_loader::dispatch::{Budgets, DispatchConfig, Dispatcher, LoadedDoor};
 use busbar_plugin_loader::sign::Manifest;
 use busbar_plugin_loader::{LinkedPlugin, PluginRegistry};
 
@@ -64,6 +64,14 @@ fn fold(digest: &str, bearer: Option<&str>, header: Option<&str>) -> Fold {
     }
 }
 
+/// The logic crate's bare `door`, as the loader takes a door it did not read from a library.
+#[allow(unused_unsafe)]
+fn loaded() -> LoadedDoor {
+    // SAFETY: `door` is this crate's own `auth_verify_door!` entry: it answers the `'static`,
+    // fully initialised door the SDK laid out.
+    unsafe { LoadedDoor::from_raw(busbar_auth_admin_tokens::door) }
+}
+
 /// The linked door's statement: a first-party `kind: auth` plugin on the auth kind's memory ABI.
 fn statement() -> Manifest {
     Manifest {
@@ -92,10 +100,7 @@ fn statement() -> Manifest {
 /// The linked door, opened over the token's digest through the loader's auth rows.
 fn opened() -> Arc<dyn AuthCalls> {
     let registry = PluginRegistry::empty()
-        .link(vec![LinkedPlugin::door(
-            statement(),
-            busbar_auth_admin_tokens::door,
-        )])
+        .link(vec![LinkedPlugin::of_loaded(statement(), loaded())])
         .expect("the linked door admits the plugin");
     let dispatcher = Dispatcher::new(DispatchConfig {
         workers: 2,
