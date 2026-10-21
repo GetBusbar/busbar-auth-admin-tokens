@@ -24,11 +24,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use busbar_auth_admin_tokens::{
-    authenticate_admin_tokens, ADMIN_TOKEN_HEADER, AUTHORIZATION_HEADER,
-};
 use busbar_contract::abi::auth::AuthPoint;
-use busbar_contract::abi::sdk::auth_door::Verdict;
 use busbar_contract::auth_calls::{Verified, VerifyAnswer, VerifyRequest};
 use busbar_contract::sha256_hex;
 use busbar_plugin_loader::auth_axis::AuthRows;
@@ -86,7 +82,7 @@ fn cdylib() -> Vec<u8> {
 /// design's One Statement: a dropped-in plugin is admitted against the rendering it states).
 fn rendering_hex() -> String {
     let rendering =
-        busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door::door)
+        busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door)
             .expect("the door states itself")
             .statement;
     rendering.iter().map(|b| format!("{b:02x}")).collect()
@@ -121,7 +117,7 @@ fn linked() -> PluginRegistry {
     PluginRegistry::empty()
         .link(vec![LinkedPlugin::door(
             statement(),
-            busbar_auth_admin_tokens::door::door,
+            busbar_auth_admin_tokens::door,
         )])
         .expect("the linked door admits the plugin")
 }
@@ -195,6 +191,37 @@ fn request(bearer: Option<&str>, header: Option<&str>) -> VerifyRequest {
     }
 }
 
+/// The credential lines the door reads.
+const AUTHORIZATION_HEADER: &str = "authorization";
+const ADMIN_TOKEN_HEADER: &str = "x-admin-token";
+
+/// The fold the door must agree with, written out beside the transcript (the logic crate's only
+/// public item is its door): no credential presented passes; a presented credential whose SHA-256
+/// is the configured digest identifies the operator; any other presented credential rejects.
+enum Fold {
+    Identity,
+    Reject,
+    Pass,
+}
+
+/// The operator identity's subject.
+const PRINCIPAL: &str = "admin";
+
+fn fold(digest: &str, bearer: Option<&str>, header: Option<&str>) -> Fold {
+    if bearer.is_none() && header.is_none() {
+        return Fold::Pass;
+    }
+    if [bearer, header]
+        .into_iter()
+        .flatten()
+        .any(|c| sha256_hex(c.as_bytes()) == digest)
+    {
+        Fold::Identity
+    } else {
+        Fold::Reject
+    }
+}
+
 /// The lines every answer names for the transport to strip, as the transcript spells them.
 const STRIPS: &str = "[authorization, x-admin-token]";
 
@@ -211,10 +238,10 @@ fn spelled(a: &VerifyAnswer) -> String {
 /// The linked function's verdict, spelled the same way: an identity or a pass continues, a reject
 /// stops, and both credential lines are named whatever the verdict.
 fn expected(digest: &str, bearer: Option<&str>, header: Option<&str>) -> String {
-    let verdict = match authenticate_admin_tokens(Some(digest), bearer, header) {
-        Verdict::Identity(id) => format!("Identity({}) Continue", id.subject),
-        Verdict::Reject => "Reject Stop".into(),
-        Verdict::Pass => "Pass Continue".into(),
+    let verdict = match fold(digest, bearer, header) {
+        Fold::Identity => format!("Identity({PRINCIPAL}) Continue"),
+        Fold::Reject => "Reject Stop".into(),
+        Fold::Pass => "Pass Continue".into(),
     };
     format!("{verdict} {STRIPS}")
 }
@@ -341,7 +368,18 @@ async fn the_linked_and_the_dropped_in_admin_tokens_plugin_are_one_plugin() {
 // digest. Every step's crossings exactly at the script's pin, the two folds equal, and the suite's
 // RED arms kept. `plugin-ci.yml` runs it under `--release`.
 busbar_plugin_loader::conformance_suite! {
-    door: busbar_auth_admin_tokens::door::door,
+    door: busbar_auth_admin_tokens::door,
     cdylib: "busbar_auth_admin_tokens_plugin",
     inputs: include_str!("conformance.json"),
+}
+
+/// The door's Statement carries the whole `declares` document under `EXT_DECLARES`.
+#[test]
+fn the_statement_carries_the_declares_document() {
+    let row = busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door).unwrap();
+    let read = busbar_contract::abi::mechanism::rendering::read(&row.statement).unwrap();
+    assert_eq!(
+        busbar_contract::abi::mechanism::extensions::declares(&read.extensions.bytes),
+        Some(&include_bytes!("../../auth-admin-tokens/declares.json")[..]),
+    );
 }

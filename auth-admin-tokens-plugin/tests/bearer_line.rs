@@ -22,11 +22,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use busbar_auth_admin_tokens::{
-    authenticate_admin_tokens, ADMIN_TOKENS_PRINCIPAL_ID, ADMIN_TOKEN_HEADER,
-};
 use busbar_contract::abi::auth::AuthPoint;
-use busbar_contract::abi::sdk::auth_door::Verdict;
 use busbar_contract::auth_calls::{AuthCalls, Verified, VerifyAnswer, VerifyRequest};
 use busbar_contract::sha256_hex;
 use busbar_plugin_loader::auth_axis::AuthRows;
@@ -39,6 +35,35 @@ const TOKEN: &str = "the-operator-token";
 
 /// The line a Bearer arrives on, spelled here so this file names nothing the change added.
 const AUTHORIZATION: &str = "authorization";
+const ADMIN_TOKEN_HEADER: &str = "x-admin-token";
+
+/// The fold the door must agree with, written out beside the transcript (the logic crate's only
+/// public item is its door): no credential presented passes; a presented credential whose SHA-256
+/// is the configured digest identifies the operator; any other presented credential rejects.
+enum Fold {
+    Identity,
+    Reject,
+    Pass,
+}
+
+/// The operator identity's subject.
+const PRINCIPAL: &str = "admin";
+
+fn fold(digest: &str, bearer: Option<&str>, header: Option<&str>) -> Fold {
+    if bearer.is_none() && header.is_none() {
+        return Fold::Pass;
+    }
+    if [bearer, header]
+        .into_iter()
+        .flatten()
+        .any(|c| sha256_hex(c.as_bytes()) == digest)
+    {
+        Fold::Identity
+    } else {
+        Fold::Reject
+    }
+}
+
 
 /// The linked door's statement: a first-party `kind: auth` plugin on the auth kind's memory ABI.
 fn statement() -> Manifest {
@@ -70,7 +95,7 @@ fn opened() -> Arc<dyn AuthCalls> {
     let registry = PluginRegistry::empty()
         .link(vec![LinkedPlugin::door(
             statement(),
-            busbar_auth_admin_tokens::door::door,
+            busbar_auth_admin_tokens::door,
         )])
         .expect("the linked door admits the plugin");
     let dispatcher = Dispatcher::new(DispatchConfig {
@@ -121,7 +146,7 @@ fn spelled(a: &VerifyAnswer) -> String {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_bearer_on_the_authorization_line_is_judged() {
     let door = opened();
-    let operator = format!("Identity({ADMIN_TOKENS_PRINCIPAL_ID})");
+    let operator = format!("Identity({PRINCIPAL})");
     let both = format!("[{AUTHORIZATION}, {ADMIN_TOKEN_HEADER}]");
     let bearer = format!("Bearer {TOKEN}");
     let cased = format!("bEaReR {TOKEN}");
@@ -168,10 +193,10 @@ async fn the_door_judges_the_line_as_the_fold_judges_the_bearer() {
         let got = door
             .verify_now(&request(&[(AUTHORIZATION, line.as_str())]))
             .expect("admin-tokens answers on the spot");
-        let want = match authenticate_admin_tokens(Some(&digest), Some(token), None) {
-            Verdict::Identity(id) => format!("Identity({})", id.subject),
-            Verdict::Reject => "Reject".into(),
-            Verdict::Pass => "Pass".into(),
+        let want = match fold(&digest, Some(token), None) {
+            Fold::Identity => format!("Identity({PRINCIPAL})"),
+            Fold::Reject => "Reject".into(),
+            Fold::Pass => "Pass".into(),
         };
         assert!(
             spelled(&got).starts_with(&format!("{want} ")),
