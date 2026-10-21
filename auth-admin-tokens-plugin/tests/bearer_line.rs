@@ -64,7 +64,6 @@ fn fold(digest: &str, bearer: Option<&str>, header: Option<&str>) -> Fold {
     }
 }
 
-
 /// The linked door's statement: a first-party `kind: auth` plugin on the auth kind's memory ABI.
 fn statement() -> Manifest {
     Manifest {

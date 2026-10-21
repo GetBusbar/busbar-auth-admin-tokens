@@ -81,10 +81,9 @@ fn cdylib() -> Vec<u8> {
 /// The door's own Statement rendering, as the lower-case hex a signed manifest carries (the
 /// design's One Statement: a dropped-in plugin is admitted against the rendering it states).
 fn rendering_hex() -> String {
-    let rendering =
-        busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door)
-            .expect("the door states itself")
-            .statement;
+    let rendering = busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door)
+        .expect("the door states itself")
+        .statement;
     rendering.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -376,7 +375,8 @@ busbar_plugin_loader::conformance_suite! {
 /// The door's Statement carries the whole `declares` document under `EXT_DECLARES`.
 #[test]
 fn the_statement_carries_the_declares_document() {
-    let row = busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door).unwrap();
+    let row =
+        busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door).unwrap();
     let read = busbar_contract::abi::mechanism::rendering::read(&row.statement).unwrap();
     assert_eq!(
         busbar_contract::abi::mechanism::extensions::declares(&read.extensions.bytes),
