@@ -12,7 +12,7 @@
 //!
 //! ## One door, on the auth kind's memory ABI (THE DESIGN §11.4, §11.6)
 //!
-//! [`door::door`] is the plugin's `plugin_door!` door, built by the SDK's `auth_verify_door!` over
+//! [`door`] is the plugin's `plugin_door!` door, built by the SDK's `auth_verify_door!` over
 //! [`AdminTokens`]: a `kind: auth` plugin that states `CAP_INBOUND` only, reads its two credential
 //! lines (`authorization` for the Bearer, and `x-admin-token`), names both for the transport to strip
 //! whatever its verdict, and judges on the spot. A build that LINKS this crate
@@ -39,16 +39,16 @@ use busbar_contract::{constant_time_eq, sha256_hex};
 /// The fixed principal id the operator admin token identifies as. The built-in operator credential
 /// carries FULL admin scope by definition (it is the root credential the deployment was born with);
 /// group-mapped external principals get their scope from `group_map:` instead.
-pub const ADMIN_TOKENS_PRINCIPAL_ID: &str = "admin";
+const ADMIN_TOKENS_PRINCIPAL_ID: &str = "admin";
 
 /// The module name: the `admin_auth:` chain entry this module answers.
-pub const ADMIN_TOKENS_MODULE_NAME: &str = "admin-tokens";
+const ADMIN_TOKENS_MODULE_NAME: &str = "admin-tokens";
 
 /// The second carrier the operator token may arrive on (lower-case); the first is the Bearer.
-pub const ADMIN_TOKEN_HEADER: &str = "x-admin-token";
+const ADMIN_TOKEN_HEADER: &str = "x-admin-token";
 
 /// The line the Bearer arrives on (lower-case), as `Bearer <token>`.
-pub const AUTHORIZATION_HEADER: &str = "authorization";
+const AUTHORIZATION_HEADER: &str = "authorization";
 
 /// A field value as header text, as 1.5.5 read it (`HeaderValue::to_str`): visible ASCII, space or
 /// tab; any other byte makes the value no text at all.
@@ -66,7 +66,7 @@ fn header_text(value: &[u8]) -> Option<&str> {
 /// matched case-insensitively, the token non-empty. Any other value (another scheme, not header
 /// text, no token) presents no Bearer (1.5.5's `to_str` then `extract_bearer_token`).
 #[must_use]
-pub fn bearer_token(value: &[u8]) -> Option<&str> {
+fn bearer_token(value: &[u8]) -> Option<&str> {
     let (scheme, token) = header_text(value)?.split_once(' ')?;
     (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
 }
@@ -95,7 +95,7 @@ fn operator() -> VerifiedIdentity {
 /// terminal in the admin chain, exactly as 1.5.5 ended every mismatch. A JWS/JWT-shaped wrong token
 /// is not passed on to the next `admin_auth:` module.
 #[must_use]
-pub fn authenticate_admin_tokens(
+fn authenticate_admin_tokens(
     configured_hash: Option<&str>,
     bearer: Option<&str>,
     header: Option<&str>,
@@ -125,14 +125,12 @@ pub fn authenticate_admin_tokens(
 }
 
 /// The refusal of settings that are not a digest. It never echoes what it was given.
-pub const NOT_A_DIGEST: &str =
-    "admin-tokens plugin config must be the admin token's SHA-256 digest \
+const NOT_A_DIGEST: &str = "admin-tokens plugin config must be the admin token's SHA-256 digest \
                                 as 64 hex characters (the value is not echoed)";
 
 /// The refusal of the digest of an empty token: a blank admin token is refused, as the linked path
 /// refuses it. It never echoes what it was given.
-pub const EMPTY_TOKEN: &str =
-    "admin-tokens plugin config is the SHA-256 digest of an empty token, \
+const EMPTY_TOKEN: &str = "admin-tokens plugin config is the SHA-256 digest of an empty token, \
                                which is refused (the value is not echoed)";
 
 /// SHA-256 of the empty string: the digest of a blank admin token.
@@ -145,7 +143,7 @@ const EMPTY_TOKEN_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b93
 ///
 /// # Errors
 /// [`NOT_A_DIGEST`]; [`EMPTY_TOKEN`] for the digest of an empty token.
-pub fn digest_of(settings: &[u8]) -> Result<String, &'static str> {
+fn digest_of(settings: &[u8]) -> Result<String, &'static str> {
     let text: String = serde_json::from_slice(settings).map_err(|_| NOT_A_DIGEST)?;
     let digest = text.trim();
     if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -167,7 +165,7 @@ fn header_token(value: &[u8]) -> Option<&str> {
 
 /// THE PLUGIN: the configured admin token's SHA-256 hex digest (never the raw token).
 #[derive(Debug)]
-pub struct AdminTokens {
+struct AdminTokens {
     configured_hash: String,
 }
 
@@ -208,22 +206,42 @@ const CARRIERS: &[MarkWord] = &[carrier(AUTHORIZATION_HEADER), carrier(ADMIN_TOK
 /// operator credential's row by this fact, never by its name.
 const TAIL: &AuthTail = &with_operator(verify_tail(0, AuthPoints::HEAD), ADMIN_TOKENS_PRINCIPAL_ID);
 
+busbar_contract::statement_extensions!(
+    /// The Statement's extensions: this plugin's whole `declares` document (BUSBAR-1.6.0.md l.246).
+    EXTENSIONS: [(
+        busbar_contract::abi::mechanism::extensions::EXT_DECLARES,
+        include_bytes!("../declares.json")
+    )]
+);
+
 /// What the plugin states: its name, version, the concurrency it serves and its two carriers.
-pub const STATEMENT: Statement = with_tail(
-    Statement {
-        mark_words: CARRIERS.as_ptr(),
-        mark_words_len: CARRIERS.len(),
-        ..statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 64)
+const STATEMENT: Statement = with_tail(
+    {
+        let mut s = statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 64)
+            .with_mark_words(CARRIERS);
+        s.extensions = EXTENSIONS;
+        s
     },
     TAIL,
 );
 
-/// THE DOOR: `door::door`, the plugin's `DoorFn`. A build that links this crate registers it as the
-/// `admin-tokens` row; `busbar-auth-admin-tokens-plugin` exports it as `busbar_plugin_door`.
-pub mod door {
+mod door {
     busbar_contract::auth_verify_door!(super::AdminTokens, super::STATEMENT);
 }
+
+/// THE DOOR: this plugin's one public item (BUSBAR-1.6.0.md l.3567, Crate shape). A build that links
+/// this crate registers it as the `admin-tokens` row; `busbar-auth-admin-tokens-plugin` exports it as
+/// `busbar_plugin_door`.
+pub use door::door;
 
 #[cfg(test)]
 #[path = "tests/lib_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/mutation_hardening_tests.rs"]
+mod mutation_hardening_tests;
+
+#[cfg(test)]
+#[path = "tests/v155_verdicts_tests.rs"]
+mod v155_verdicts_tests;

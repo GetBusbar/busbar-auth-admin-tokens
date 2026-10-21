@@ -23,7 +23,7 @@
 //! A presented credential that does not match is `Reject`, terminal in the `admin_auth:` chain,
 //! whatever its shape: 1.5.5 never passed a wrong token on to the next module.
 
-use busbar_auth_admin_tokens::{authenticate_admin_tokens, ADMIN_TOKENS_PRINCIPAL_ID};
+use crate::{authenticate_admin_tokens, ADMIN_TOKENS_PRINCIPAL_ID};
 use busbar_contract::abi::sdk::auth_door::Verdict;
 use busbar_contract::sha256_hex;
 

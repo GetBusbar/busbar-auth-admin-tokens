@@ -6,7 +6,7 @@
 //! `Reject`, whatever its shape; the Bearer is read through `HeaderValue::to_str` (visible ASCII,
 //! space or tab), so a value with any other byte presents no Bearer.
 
-use busbar_auth_admin_tokens::{authenticate_admin_tokens, bearer_token};
+use crate::{authenticate_admin_tokens, bearer_token};
 use busbar_contract::abi::sdk::auth_door::Verdict;
 use busbar_contract::sha256_hex;
 
