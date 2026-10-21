@@ -68,9 +68,9 @@ fn statement() -> Manifest {
 /// The linked door, opened over the token's digest through the loader's auth rows.
 fn opened() -> Arc<dyn AuthCalls> {
     let registry = PluginRegistry::empty()
-        .link(vec![LinkedPlugin::door(
+        .link(vec![LinkedPlugin::of_macro(
             statement(),
-            busbar_auth_admin_tokens::door::door,
+            busbar_auth_admin_tokens::door::MACRO_DOOR,
         )])
         .expect("the linked door admits the plugin");
     let dispatcher = Dispatcher::new(DispatchConfig {
