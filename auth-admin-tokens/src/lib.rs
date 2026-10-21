@@ -210,11 +210,7 @@ const TAIL: &AuthTail = &with_operator(verify_tail(0, AuthPoints::HEAD), ADMIN_T
 
 /// What the plugin states: its name, version, the concurrency it serves and its two carriers.
 pub const STATEMENT: Statement = with_tail(
-    Statement {
-        mark_words: CARRIERS.as_ptr(),
-        mark_words_len: CARRIERS.len(),
-        ..statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 64)
-    },
+    statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 64).with_mark_words(CARRIERS),
     TAIL,
 );
 

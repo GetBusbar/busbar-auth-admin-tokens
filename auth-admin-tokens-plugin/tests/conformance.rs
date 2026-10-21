@@ -85,10 +85,11 @@ fn cdylib() -> Vec<u8> {
 /// The door's own Statement rendering, as the lower-case hex a signed manifest carries (the
 /// design's One Statement: a dropped-in plugin is admitted against the rendering it states).
 fn rendering_hex() -> String {
-    let rendering =
-        busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door::door)
-            .expect("the door states itself")
-            .statement;
+    let rendering = busbar_plugin_loader::dispatch::LinkedRow::of_macro(
+        busbar_auth_admin_tokens::door::MACRO_DOOR,
+    )
+    .expect("the door states itself")
+    .statement;
     rendering.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -341,7 +342,7 @@ async fn the_linked_and_the_dropped_in_admin_tokens_plugin_are_one_plugin() {
 // digest. Every step's crossings exactly at the script's pin, the two folds equal, and the suite's
 // RED arms kept. `plugin-ci.yml` runs it under `--release`.
 busbar_plugin_loader::conformance_suite! {
-    door: busbar_auth_admin_tokens::door::door,
+    door: busbar_auth_admin_tokens::door::MACRO_DOOR,
     cdylib: "busbar_auth_admin_tokens_plugin",
     inputs: include_str!("conformance.json"),
 }
