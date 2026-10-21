@@ -5,7 +5,7 @@
 //! conformance on the auth kind's memory ABI, run against the busbar rev this repo pins
 //! (`.busbar-ref`).
 //!
-//! The plugin is held two ways at once: LINKED (the logic crate's `door::door`, registered through
+//! The plugin is held two ways at once: LINKED (the logic crate's `door`, registered through
 //! the loader's `PluginRegistry::link`) and DROPPED IN (this crate's built cdylib, exporting the same
 //! door as `busbar_plugin_door`, signed first-party under the SAME statement into a temp `plugins/`
 //! directory and found by the loader's scan). Each arm is opened by the loader's auth rows on a real
@@ -28,7 +28,7 @@ use busbar_contract::abi::auth::AuthPoint;
 use busbar_contract::auth_calls::{Verified, VerifyAnswer, VerifyRequest};
 use busbar_contract::sha256_hex;
 use busbar_plugin_loader::auth_axis::AuthRows;
-use busbar_plugin_loader::dispatch::{Budgets, DispatchConfig, Dispatcher};
+use busbar_plugin_loader::dispatch::{Budgets, DispatchConfig, Dispatcher, LinkedRow, LoadedDoor};
 use busbar_plugin_loader::sign::{sign, Manifest, SigningKey, TrustPolicy};
 use busbar_plugin_loader::{LinkedPlugin, PluginRegistry};
 
@@ -78,10 +78,18 @@ fn cdylib() -> Vec<u8> {
     std::fs::read(found).expect("read the cdylib")
 }
 
+/// The logic crate's bare `door`, as the loader takes a door it did not read from a library.
+#[allow(unused_unsafe)]
+fn loaded() -> LoadedDoor {
+    // SAFETY: `door` is this crate's own `auth_verify_door!` entry: it answers the `'static`,
+    // fully initialised door the SDK laid out.
+    unsafe { LoadedDoor::from_raw(busbar_auth_admin_tokens::door) }
+}
+
 /// The door's own Statement rendering, as the lower-case hex a signed manifest carries (the
 /// design's One Statement: a dropped-in plugin is admitted against the rendering it states).
 fn rendering_hex() -> String {
-    let rendering = busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door)
+    let rendering = LinkedRow::of_loaded(loaded())
         .expect("the door states itself")
         .statement;
     rendering.iter().map(|b| format!("{b:02x}")).collect()
@@ -111,7 +119,7 @@ fn statement() -> Manifest {
     }
 }
 
-/// THE LINKED DOOR: the logic crate's `door::door` through `PluginRegistry::link`.
+/// THE LINKED DOOR: the logic crate's `door` through `PluginRegistry::link`.
 fn linked() -> PluginRegistry {
     PluginRegistry::empty()
         .link(vec![LinkedPlugin::door(
@@ -367,7 +375,7 @@ async fn the_linked_and_the_dropped_in_admin_tokens_plugin_are_one_plugin() {
 // digest. Every step's crossings exactly at the script's pin, the two folds equal, and the suite's
 // RED arms kept. `plugin-ci.yml` runs it under `--release`.
 busbar_plugin_loader::conformance_suite! {
-    door: busbar_auth_admin_tokens::door,
+    loaded: loaded(),
     cdylib: "busbar_auth_admin_tokens_plugin",
     inputs: include_str!("conformance.json"),
 }
@@ -375,8 +383,7 @@ busbar_plugin_loader::conformance_suite! {
 /// The door's Statement carries the whole `declares` document under `EXT_DECLARES`.
 #[test]
 fn the_statement_carries_the_declares_document() {
-    let row =
-        busbar_plugin_loader::dispatch::LinkedRow::of(busbar_auth_admin_tokens::door).unwrap();
+    let row = LinkedRow::of_loaded(loaded()).unwrap();
     let read = busbar_contract::abi::mechanism::rendering::read(&row.statement).unwrap();
     assert_eq!(
         busbar_contract::abi::mechanism::extensions::declares(&read.extensions.bytes),

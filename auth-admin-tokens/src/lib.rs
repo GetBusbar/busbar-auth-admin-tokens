@@ -216,11 +216,11 @@ busbar_contract::statement_extensions!(
 
 /// What the plugin states: its name, version, the concurrency it serves and its two carriers.
 const STATEMENT: Statement = with_tail(
-    Statement {
-        mark_words: CARRIERS.as_ptr(),
-        mark_words_len: CARRIERS.len(),
-        extensions: EXTENSIONS,
-        ..statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 64)
+    {
+        let mut s = statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 64)
+            .with_mark_words(CARRIERS);
+        s.extensions = EXTENSIONS;
+        s
     },
     TAIL,
 );
