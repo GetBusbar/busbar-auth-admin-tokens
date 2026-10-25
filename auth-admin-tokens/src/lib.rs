@@ -199,9 +199,21 @@ fn note_malformed(line: &str) {
 
 /// THE PLUGIN: the configured admin token's SHA-256 hex digest (never the raw token).
 ///
+/// The digest sits behind a lock so a `refresh` carrying a ROTATED digest replaces it in place:
+/// the new token is accepted and the old one refused without a re-open.
+///
 /// `Debug` is implemented by hand and never prints the digest.
 pub struct AdminTokens {
-    configured_hash: String,
+    configured_hash: std::sync::RwLock<String>,
+}
+
+impl AdminTokens {
+    /// The digest this instance judges against now.
+    fn digest(&self) -> std::sync::RwLockReadGuard<'_, String> {
+        self.configured_hash
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 }
 
 impl std::fmt::Debug for AdminTokens {
@@ -213,8 +225,22 @@ impl std::fmt::Debug for AdminTokens {
 impl VerifyPlugin for AdminTokens {
     fn open(settings: &[u8], _secrets: &[&[u8]]) -> Result<Self, &'static str> {
         Ok(Self {
-            configured_hash: digest_of(settings)?,
+            configured_hash: std::sync::RwLock::new(digest_of(settings)?),
         })
+    }
+
+    /// A reload: the settings `refresh` carries are read as `open` reads them, so a rotated digest
+    /// replaces the one held and is judged from the next request on. Settings that are not a digest
+    /// keep the digest held (a refresh cannot refuse; dropping to no digest would answer `Pass`,
+    /// and a held instance never stops judging). Nothing is cached, so nothing is dropped: `0`.
+    fn refresh(&self, settings: &[u8], _secrets: &[&[u8]]) -> u64 {
+        if let Ok(digest) = digest_of(settings) {
+            *self
+                .configured_hash
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = digest;
+        }
+        0
     }
 
     /// The Bearer (off the `authorization` line) and the `X-Admin-Token` line are put to
@@ -223,7 +249,7 @@ impl VerifyPlugin for AdminTokens {
     /// lines.
     fn verify(&self, request: &VerifyView<'_>) -> Answer {
         let verdict = authenticate_admin_tokens(
-            Some(&self.configured_hash),
+            Some(&self.digest()),
             request.line(AUTHORIZATION_HEADER).and_then(bearer_line),
             request.line(ADMIN_TOKEN_HEADER).and_then(header_line),
         );
