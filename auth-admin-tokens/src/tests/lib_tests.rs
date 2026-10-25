@@ -54,10 +54,10 @@ fn a_jws_shaped_configured_token_identifies() {
     let settings = format!("\"{h}\"");
     let plugin =
         <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("a digest opens");
-    match authenticate_admin_tokens(Some(&plugin.configured_hash), Some(token), None) {
+    match authenticate_admin_tokens(Some(&plugin.digest()), Some(token), None) {
         Verdict::Identity(p) => assert_eq!(p.subject, ADMIN_TOKENS_PRINCIPAL_ID),
         other => panic!("expected Identity, got {other:?}"),
-    }
+    };
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn open_takes_the_digest_trimmed_in_either_case() {
     let h = hash("secret");
     let settings = format!("\"  {}\\n\"", h.to_ascii_uppercase());
     let plugin = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("opens");
-    assert_eq!(plugin.configured_hash, h);
+    assert_eq!(*plugin.digest(), h);
 }
 
 /// The Statement names the module and its two credential lines.
