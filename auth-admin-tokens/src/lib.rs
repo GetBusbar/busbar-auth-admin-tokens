@@ -166,9 +166,16 @@ fn header_token(value: &[u8]) -> Option<&str> {
 }
 
 /// THE PLUGIN: the configured admin token's SHA-256 hex digest (never the raw token).
-#[derive(Debug)]
+///
+/// `Debug` is implemented by hand and never prints the digest.
 pub struct AdminTokens {
     configured_hash: String,
+}
+
+impl std::fmt::Debug for AdminTokens {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AdminTokens").finish_non_exhaustive()
+    }
 }
 
 impl VerifyPlugin for AdminTokens {
