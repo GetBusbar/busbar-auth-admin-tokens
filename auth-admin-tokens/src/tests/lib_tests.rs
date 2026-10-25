@@ -214,3 +214,45 @@ fn the_bearer_is_read_off_the_authorization_line() {
         "a non-UTF-8 value is not a Bearer"
     );
 }
+
+/// 1.5.5's `extract_bearer_token` was `split_once(' ')` with the token kept as-is: the split is on
+/// the FIRST single space, the token is the rest verbatim (never trimmed), and only a space
+/// separates scheme from token.
+#[test]
+fn the_bearer_split_is_the_first_single_space_and_the_token_is_verbatim() {
+    assert_eq!(
+        bearer_token(b"Bearer  secret"),
+        Some(" secret"),
+        "the token keeps its leading space"
+    );
+    assert_eq!(bearer_token(b"Bearer a b"), Some("a b"));
+    assert_eq!(
+        bearer_token(b"Bearer\tsecret"),
+        None,
+        "a tab is not the separator"
+    );
+    assert_eq!(
+        bearer_token(b" Bearer secret"),
+        None,
+        "a leading space makes the scheme empty"
+    );
+    let h = hash("secret");
+    assert!(
+        matches!(
+            authenticate_admin_tokens(Some(&h), bearer_token(b"Bearer  secret"), None),
+            Verdict::Reject
+        ),
+        "the untrimmed token is a different credential: it is rejected"
+    );
+}
+
+/// `Debug` never prints the admin token's digest.
+#[test]
+fn debug_never_prints_the_configured_digest() {
+    let h = hash("secret");
+    let settings = format!("\"{h}\"");
+    let plugin = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("opens");
+    let shown = format!("{plugin:?}");
+    assert!(!shown.contains(&h), "{shown}");
+    assert!(!shown.contains(&h[..16]), "{shown}");
+}
