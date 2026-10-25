@@ -256,3 +256,60 @@ fn debug_never_prints_the_configured_digest() {
     assert!(!shown.contains(&h), "{shown}");
     assert!(!shown.contains(&h[..16]), "{shown}");
 }
+
+/// A wrong token is refused AND the refusal is logged (module = admin-tokens), with neither the
+/// presented token nor the configured digest in the line.
+#[test]
+fn a_wrong_token_reject_is_logged_without_the_token() {
+    let h = hash("secret");
+    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    let verdict = tracing::subscriber::with_default(cap.clone(), || {
+        authenticate_admin_tokens(Some(&h), Some("WRONG-TOKEN-TEXT"), None)
+    });
+    assert_eq!(verdict, Verdict::Reject);
+    let logged = cap.messages().join("\n");
+    assert!(logged.contains("admin-tokens"), "{logged:?}");
+    assert!(logged.contains("mismatch"), "{logged:?}");
+    assert!(!logged.contains("WRONG-TOKEN-TEXT"), "{logged:?}");
+    assert!(!logged.contains(&h[..16]), "{logged:?}");
+}
+
+/// Passes (no token presented, none configured) are not refusals and log nothing.
+#[test]
+fn a_pass_logs_nothing() {
+    let h = hash("secret");
+    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(
+            authenticate_admin_tokens(Some(&h), None, None),
+            Verdict::Pass
+        );
+    });
+    assert!(cap.messages().is_empty(), "{:?}", cap.messages());
+}
+
+/// A credential line that is not header text is read as absent AND says so in the log, without the
+/// bytes of the value.
+#[test]
+fn a_non_header_text_credential_line_is_logged() {
+    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(bearer_line(b"Bearer sec\xffret"), None);
+        assert_eq!(header_line(b"sec\x01ret"), None);
+        // A well-formed non-Bearer scheme and a blank header are plain absences: no log.
+        assert_eq!(bearer_line(b"Basic abc"), None);
+        assert_eq!(header_line(b""), None);
+    });
+    let logged = cap.messages().join("\n");
+    assert!(logged.contains("admin-tokens"), "{logged:?}");
+    assert!(logged.contains("authorization"), "{logged:?}");
+    assert!(logged.contains("x-admin-token"), "{logged:?}");
+    assert!(!logged.contains("ret"), "value leaked: {logged:?}");
+    assert_eq!(cap.messages().len(), 2, "{logged:?}");
+}
+
+/// The Statement declares the stateless verifier's concurrency, as webhook-signature, sigv4 and oauth do.
+#[test]
+fn statement_concurrency_is_1024() {
+    assert_eq!(STATEMENT.max_inflight, 1024);
+}
