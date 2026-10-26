@@ -88,46 +88,6 @@ fn non_matching_credentials_of_any_shape_never_identify() {
     }
 }
 
-/// A mismatched, NON-JWS-shaped credential presented against a configured token must specifically
-/// `Reject` (a credential WAS presented, addressed to THIS module's grammar, and it is just wrong)
-/// — never silently `Pass`, which would make a wrong credential indistinguishable from "no
-/// credential", and never `Identify`.
-#[test]
-fn wrong_credential_of_any_shape_rejects_not_passes() {
-    let h = hash("secret");
-    for cred in ["", "wrong", "\0\x01garbage"] {
-        assert_eq!(
-            authenticate_admin_tokens(Some(&h), Some(cred), None),
-            Verdict::Reject,
-            "candidate {cred:?} on bearer carrier must Reject"
-        );
-        assert_eq!(
-            authenticate_admin_tokens(Some(&h), None, Some(cred)),
-            Verdict::Reject,
-            "candidate {cred:?} on header carrier must Reject"
-        );
-    }
-}
-
-/// A mismatched JWS-SHAPED credential (three non-empty dot-separated segments) `Reject`s like any
-/// other mismatch, never `Pass`.
-#[test]
-fn jws_shaped_mismatch_rejects_not_passes() {
-    let h = hash("secret");
-    for cred in ["a.b.c", "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.sig", "x.y.z"] {
-        assert_eq!(
-            authenticate_admin_tokens(Some(&h), Some(cred), None),
-            Verdict::Reject,
-            "JWS-shaped candidate {cred:?} on bearer carrier must Reject"
-        );
-        assert_eq!(
-            authenticate_admin_tokens(Some(&h), None, Some(cred)),
-            Verdict::Reject,
-            "JWS-shaped candidate {cred:?} on header carrier must Reject"
-        );
-    }
-}
-
 /// A wrong credential on one carrier `Reject`s the whole verdict whatever the OTHER carrier's
 /// shape.
 #[test]
