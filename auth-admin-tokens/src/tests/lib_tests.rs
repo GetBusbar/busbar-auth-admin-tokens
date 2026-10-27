@@ -54,10 +54,10 @@ fn a_jws_shaped_configured_token_identifies() {
     let settings = format!("\"{h}\"");
     let plugin =
         <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("a digest opens");
-    match authenticate_admin_tokens(Some(&plugin.configured_hash), Some(token), None) {
+    match authenticate_admin_tokens(Some(&plugin.digest()), Some(token), None) {
         Verdict::Identity(p) => assert_eq!(p.subject, ADMIN_TOKENS_PRINCIPAL_ID),
         other => panic!("expected Identity, got {other:?}"),
-    }
+    };
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn open_takes_the_digest_trimmed_in_either_case() {
     let h = hash("secret");
     let settings = format!("\"  {}\\n\"", h.to_ascii_uppercase());
     let plugin = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("opens");
-    assert_eq!(plugin.configured_hash, h);
+    assert_eq!(*plugin.digest(), h);
 }
 
 /// The Statement names the module and its two credential lines.
@@ -213,4 +213,103 @@ fn the_bearer_is_read_off_the_authorization_line() {
         None,
         "a non-UTF-8 value is not a Bearer"
     );
+}
+
+/// 1.5.5's `extract_bearer_token` was `split_once(' ')` with the token kept as-is: the split is on
+/// the FIRST single space, the token is the rest verbatim (never trimmed), and only a space
+/// separates scheme from token.
+#[test]
+fn the_bearer_split_is_the_first_single_space_and_the_token_is_verbatim() {
+    assert_eq!(
+        bearer_token(b"Bearer  secret"),
+        Some(" secret"),
+        "the token keeps its leading space"
+    );
+    assert_eq!(bearer_token(b"Bearer a b"), Some("a b"));
+    assert_eq!(
+        bearer_token(b"Bearer\tsecret"),
+        None,
+        "a tab is not the separator"
+    );
+    assert_eq!(
+        bearer_token(b" Bearer secret"),
+        None,
+        "a leading space makes the scheme empty"
+    );
+    let h = hash("secret");
+    assert!(
+        matches!(
+            authenticate_admin_tokens(Some(&h), bearer_token(b"Bearer  secret"), None),
+            Verdict::Reject
+        ),
+        "the untrimmed token is a different credential: it is rejected"
+    );
+}
+
+/// `Debug` never prints the admin token's digest.
+#[test]
+fn debug_never_prints_the_configured_digest() {
+    let h = hash("secret");
+    let settings = format!("\"{h}\"");
+    let plugin = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("opens");
+    let shown = format!("{plugin:?}");
+    assert!(!shown.contains(&h), "{shown}");
+    assert!(!shown.contains(&h[..16]), "{shown}");
+}
+
+/// A wrong token is refused AND the refusal is logged (module = admin-tokens), with neither the
+/// presented token nor the configured digest in the line.
+#[test]
+fn a_wrong_token_reject_is_logged_without_the_token() {
+    let h = hash("secret");
+    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    let verdict = tracing::subscriber::with_default(cap.clone(), || {
+        authenticate_admin_tokens(Some(&h), Some("WRONG-TOKEN-TEXT"), None)
+    });
+    assert_eq!(verdict, Verdict::Reject);
+    let logged = cap.messages().join("\n");
+    assert!(logged.contains("admin-tokens"), "{logged:?}");
+    assert!(logged.contains("mismatch"), "{logged:?}");
+    assert!(!logged.contains("WRONG-TOKEN-TEXT"), "{logged:?}");
+    assert!(!logged.contains(&h[..16]), "{logged:?}");
+}
+
+/// Passes (no token presented, none configured) are not refusals and log nothing.
+#[test]
+fn a_pass_logs_nothing() {
+    let h = hash("secret");
+    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(
+            authenticate_admin_tokens(Some(&h), None, None),
+            Verdict::Pass
+        );
+    });
+    assert!(cap.messages().is_empty(), "{:?}", cap.messages());
+}
+
+/// A credential line that is not header text is read as absent AND says so in the log, without the
+/// bytes of the value.
+#[test]
+fn a_non_header_text_credential_line_is_logged() {
+    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(bearer_line(b"Bearer sec\xffret"), None);
+        assert_eq!(header_line(b"sec\x01ret"), None);
+        // A well-formed non-Bearer scheme and a blank header are plain absences: no log.
+        assert_eq!(bearer_line(b"Basic abc"), None);
+        assert_eq!(header_line(b""), None);
+    });
+    let logged = cap.messages().join("\n");
+    assert!(logged.contains("admin-tokens"), "{logged:?}");
+    assert!(logged.contains("authorization"), "{logged:?}");
+    assert!(logged.contains("x-admin-token"), "{logged:?}");
+    assert!(!logged.contains("ret"), "value leaked: {logged:?}");
+    assert_eq!(cap.messages().len(), 2, "{logged:?}");
+}
+
+/// The Statement declares the stateless verifier's concurrency, as webhook-signature, sigv4 and oauth do.
+#[test]
+fn statement_concurrency_is_1024() {
+    assert_eq!(STATEMENT.max_inflight, 1024);
 }

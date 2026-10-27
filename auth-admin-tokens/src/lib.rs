@@ -120,7 +120,12 @@ pub fn authenticate_admin_tokens(
     if std::hint::black_box(bearer_match | header_match) != 0 {
         return Verdict::Identity(operator());
     }
-    // A credential was presented (at least one carrier is `Some`) and neither matched.
+    // A credential was presented (at least one carrier is `Some`) and neither matched. Neither the
+    // token nor the digest is logged.
+    tracing::info!(
+        module = "admin-tokens",
+        "admin token refused: token mismatch"
+    );
     Verdict::Reject
 }
 
@@ -165,17 +170,77 @@ fn header_token(value: &[u8]) -> Option<&str> {
     header_text(value).filter(|t| !t.is_empty())
 }
 
+/// The Bearer off the `authorization` line. A value that is not header text is read as absent, and
+/// says so in the log (never the value).
+fn bearer_line(value: &[u8]) -> Option<&str> {
+    if header_text(value).is_none() {
+        note_malformed(AUTHORIZATION_HEADER);
+    }
+    bearer_token(value)
+}
+
+/// The token off the `X-Admin-Token` line. A value that is not header text is read as absent, and
+/// says so in the log (never the value).
+fn header_line(value: &[u8]) -> Option<&str> {
+    if header_text(value).is_none() {
+        note_malformed(ADMIN_TOKEN_HEADER);
+    }
+    header_token(value)
+}
+
+/// The log line for a credential line that is not header text.
+fn note_malformed(line: &str) {
+    tracing::info!(
+        module = "admin-tokens",
+        line,
+        "admin token line is not header text and is read as absent"
+    );
+}
+
 /// THE PLUGIN: the configured admin token's SHA-256 hex digest (never the raw token).
-#[derive(Debug)]
+///
+/// The digest sits behind a lock so a `refresh` carrying a ROTATED digest replaces it in place:
+/// the new token is accepted and the old one refused without a re-open.
+///
+/// `Debug` is implemented by hand and never prints the digest.
 pub struct AdminTokens {
-    configured_hash: String,
+    configured_hash: std::sync::RwLock<String>,
+}
+
+impl AdminTokens {
+    /// The digest this instance judges against now.
+    fn digest(&self) -> std::sync::RwLockReadGuard<'_, String> {
+        self.configured_hash
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+impl std::fmt::Debug for AdminTokens {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AdminTokens").finish_non_exhaustive()
+    }
 }
 
 impl VerifyPlugin for AdminTokens {
     fn open(settings: &[u8], _secrets: &[&[u8]]) -> Result<Self, &'static str> {
         Ok(Self {
-            configured_hash: digest_of(settings)?,
+            configured_hash: std::sync::RwLock::new(digest_of(settings)?),
         })
+    }
+
+    /// A reload: the settings `refresh` carries are read as `open` reads them, so a rotated digest
+    /// replaces the one held and is judged from the next request on. Settings that are not a digest
+    /// keep the digest held (a refresh cannot refuse; dropping to no digest would answer `Pass`,
+    /// and a held instance never stops judging). Nothing is cached, so nothing is dropped: `0`.
+    fn refresh(&self, settings: &[u8], _secrets: &[&[u8]]) -> u64 {
+        if let Ok(digest) = digest_of(settings) {
+            *self
+                .configured_hash
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = digest;
+        }
+        0
     }
 
     /// The Bearer (off the `authorization` line) and the `X-Admin-Token` line are put to
@@ -184,9 +249,9 @@ impl VerifyPlugin for AdminTokens {
     /// lines.
     fn verify(&self, request: &VerifyView<'_>) -> Answer {
         let verdict = authenticate_admin_tokens(
-            Some(&self.configured_hash),
-            request.line(AUTHORIZATION_HEADER).and_then(bearer_token),
-            request.line(ADMIN_TOKEN_HEADER).and_then(header_token),
+            Some(&self.digest()),
+            request.line(AUTHORIZATION_HEADER).and_then(bearer_line),
+            request.line(ADMIN_TOKEN_HEADER).and_then(header_line),
         );
         Answer {
             strips: vec![
@@ -208,12 +273,13 @@ const CARRIERS: &[MarkWord] = &[carrier(AUTHORIZATION_HEADER), carrier(ADMIN_TOK
 /// operator credential's row by this fact, never by its name.
 const TAIL: &AuthTail = &with_operator(verify_tail(0, AuthPoints::HEAD), ADMIN_TOKENS_PRINCIPAL_ID);
 
-/// What the plugin states: its name, version, the concurrency it serves and its two carriers.
+/// What the plugin states: its name, version, the concurrency it serves (1024: a pure, stateless
+/// compare, like the other verifiers) and its two carriers.
 pub const STATEMENT: Statement = with_tail(
     Statement {
         mark_words: CARRIERS.as_ptr(),
         mark_words_len: CARRIERS.len(),
-        ..statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 64)
+        ..statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 1024)
     },
     TAIL,
 );

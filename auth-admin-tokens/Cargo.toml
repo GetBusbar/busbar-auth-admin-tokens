@@ -1,11 +1,11 @@
 [package]
 name = "busbar-auth-admin-tokens"
 version = "1.6.0"
-publish = false            # linked into busbar at a pinned rev, or shipped as a signed tarball; never to crates.io
-edition = "2021"
-rust-version = "1.97"
+publish.workspace = true  # linked into busbar at a pinned rev, or shipped as a signed tarball; never to crates.io
+edition.workspace = true
+rust-version.workspace = true
 description = "The built-in `admin-tokens` admin-auth plugin for busbar: the single operator admin token, compared in constant time across both carriers."
-license = "Apache-2.0"
+license.workspace = true
 
 [lib]
 # rlib only: the logic and its door. A build that LINKS this crate registers `door::door` as its
@@ -19,3 +19,8 @@ crate-type = ["rlib"]
 busbar-contract = { workspace = true }
 # The settings document (a JSON string holding the digest).
 serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# `testkit::WarnCapture` (compiled only under the dev-only `test-seal` feature) for the log tests.
+busbar-contract = { workspace = true, features = ["test-seal"] }
