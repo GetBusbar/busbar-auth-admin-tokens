@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 [package]
 name = "busbar-auth-admin-tokens-plugin"
-version = "1.5.0"
+version = "1.6.0"
 publish.workspace = true  # first-party signed cdylib, shipped as a packed/signed tarball, not to crates.io
 edition.workspace = true
 rust-version.workspace = true
@@ -24,7 +24,8 @@ busbar-contract = { workspace = true }
 # the logic crate's busbar-contract, so one busbar source resolves.
 # `conformance`: busbar's PUBLISHED conformance suite (`tests/conformance.rs`'s `conformance_suite!`),
 # run against the busbar commit this repo pins.
-busbar-plugin-loader = { workspace = true, features = ["conformance"] }
+busbar-plugin-loader = { workspace = true }
+busbar-test-kit = { workspace = true }
 # `test-seal`: the contract's dev-only TestKernelSeal, lent to the tests' dispatcher as the
 # composition root lends the kernel's, so a verify reveals the credential lines it lends the door.
 busbar-contract = { workspace = true, features = ["test-seal"] }
