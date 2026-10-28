@@ -10,7 +10,7 @@
 //! constant-time both-carriers fold lives INSIDE the module: selecting a carrier before the compare
 //! would reintroduce the timing observable the fold kills.
 //!
-//! ## One door, on the auth kind's memory ABI (THE DESIGN §11.4, §11.6)
+//! ## One door
 //!
 //! [`door::door`] is the plugin's `plugin_door!` door, built by the SDK's `auth_verify_door!` over
 //! [`AdminTokens`]: a `kind: auth` plugin that states `CAP_INBOUND` only, reads its two credential
@@ -18,12 +18,7 @@
 //! whatever its verdict, and judges on the spot. A build that LINKS this crate
 //! registers that door as its `admin-tokens` row; the dropped-in build
 //! (`busbar-auth-admin-tokens-plugin`) exports the SAME door as `busbar_plugin_door`. Every verdict
-//! either way is [`authenticate_admin_tokens`]'s.
-//!
-//! THE TEMPLATE for porting a `kind: auth` plugin onto the memory ABI: implement
-//! `abi::sdk::auth_door::VerifyPlugin` (open from the settings document, verify over the
-//! `VerifyView`), state the tail with `verify_tail`, and let `auth_verify_door!` write the door. The
-//! crate holds no `unsafe`.
+//! either way is [`authenticate_admin_tokens`]'s. The crate holds no `unsafe`.
 
 #![forbid(unsafe_code)]
 
@@ -51,8 +46,8 @@ pub const ADMIN_TOKEN_HEADER: &str = "x-admin-token";
 /// The line the Bearer arrives on (lower-case), as `Bearer <token>`.
 pub const AUTHORIZATION_HEADER: &str = "authorization";
 
-/// A field value as header text, as 1.5.5 read it (`HeaderValue::to_str`): visible ASCII, space or
-/// tab; any other byte makes the value no text at all.
+/// A field value as header text (as `HeaderValue::to_str`): visible ASCII, space or tab; any other
+/// byte makes the value no text at all.
 fn header_text(value: &[u8]) -> Option<&str> {
     if !value
         .iter()
@@ -65,7 +60,7 @@ fn header_text(value: &[u8]) -> Option<&str> {
 
 /// The token of an `Authorization` value in the Bearer scheme: the value header text, the scheme
 /// matched case-insensitively, the token non-empty. Any other value (another scheme, not header
-/// text, no token) presents no Bearer (1.5.5's `to_str` then `extract_bearer_token`).
+/// text, no token) presents no Bearer.
 #[must_use]
 pub fn bearer_token(value: &[u8]) -> Option<&str> {
     let (scheme, token) = header_text(value)?.split_once(' ')?;
@@ -93,8 +88,8 @@ fn operator() -> VerifiedIdentity {
 /// that ends all-`Pass` is denied (fail-closed), preserving "admin API disabled without a token".
 ///
 /// A credential presented and not matching is a wrong credential, whatever its shape: `Reject`,
-/// terminal in the admin chain, exactly as 1.5.5 ended every mismatch. A JWS/JWT-shaped wrong token
-/// is not passed on to the next `admin_auth:` module.
+/// terminal in the admin chain. A JWS/JWT-shaped wrong token is not passed on to the next
+/// `admin_auth:` module.
 #[must_use]
 pub fn authenticate_admin_tokens(
     configured_hash: Option<&str>,
@@ -166,8 +161,7 @@ pub fn digest_of(settings: &[u8]) -> Result<String, &'static str> {
     Ok(digest)
 }
 
-/// The `X-Admin-Token` line as 1.5.5 read it (`extract_admin_header_token`: `to_str().ok()` then
-/// `.filter(|t| !t.is_empty())`): a value that is not header text, or is blank, is ABSENT, never a
+/// The `X-Admin-Token` line: a value that is not header text, or is blank, is ABSENT, never a
 /// presented wrong credential.
 fn header_token(value: &[u8]) -> Option<&str> {
     header_text(value).filter(|t| !t.is_empty())
@@ -200,7 +194,7 @@ fn note_malformed(line: &str) {
     );
 }
 
-/// THE PLUGIN: the configured admin token's SHA-256 hex digest (never the raw token).
+/// The plugin: the configured admin token's SHA-256 hex digest (never the raw token).
 ///
 /// The digest sits behind a lock so a `refresh` carrying a ROTATED digest replaces it in place:
 /// the new token is accepted and the old one refused without a re-open.
@@ -287,7 +281,7 @@ pub const STATEMENT: Statement = with_tail(
     TAIL,
 );
 
-/// THE DOOR: `door::door`, the plugin's `DoorFn`. A build that links this crate registers it as the
+/// The door: `door::door`, the plugin's `DoorFn`. A build that links this crate registers it as the
 /// `admin-tokens` row; `busbar-auth-admin-tokens-plugin` exports it as `busbar_plugin_door`.
 pub mod door {
     busbar_contract::auth_verify_door!(super::AdminTokens, super::STATEMENT);
