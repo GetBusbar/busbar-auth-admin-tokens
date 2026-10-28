@@ -79,7 +79,7 @@ fn linked(d: &Dispatcher) -> Plugin<Auth> {
 }
 
 fn dropped(d: &Dispatcher) -> Plugin<Auth> {
-    let path = busbar_plugin_loader::conformance::cdylib_of("busbar_auth_admin_tokens_plugin");
+    let path = busbar_test_kit::conformance::cdylib_of("busbar_auth_admin_tokens_plugin");
     let stated =
         rendering_of(busbar_auth_admin_tokens::door::door).expect("the door renders its Statement");
     load_dropped::<Auth>(&path, &stated, bind(d)).expect("the dropped door loads")
