@@ -340,7 +340,7 @@ async fn the_linked_and_the_dropped_in_admin_tokens_plugin_are_one_plugin() {
 // wrong opaque token, another scheme's JWS, none), and the rotated settings are another token's
 // digest. Every step's crossings exactly at the script's pin, the two folds equal, and the suite's
 // RED arms kept. `plugin-ci.yml` runs it under `--release`.
-busbar_plugin_loader::conformance_suite! {
+busbar_test_kit::conformance_suite! {
     door: busbar_auth_admin_tokens::door::door,
     cdylib: "busbar_auth_admin_tokens_plugin",
     inputs: include_str!("conformance.json"),
