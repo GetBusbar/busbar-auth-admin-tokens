@@ -111,11 +111,11 @@ pub fn authenticate_admin_tokens(
     // The candidate's digest in lower-case hex on the stack, compared with the configured one.
     let matches = |token: &str| {
         const HEX: &[u8; 16] = b"0123456789abcdef";
-        let mut hex = [0_u8; 64];
-        for (pair, b) in hex.chunks_exact_mut(2).zip(sha256(token.as_bytes())) {
-            pair[0] = HEX[usize::from(b >> 4)];
-            pair[1] = HEX[usize::from(b & 0xf)];
-        }
+        let digest = sha256(token.as_bytes());
+        let hex: [u8; 64] = std::array::from_fn(|i| {
+            let b = digest[i / 2];
+            HEX[usize::from(if i % 2 == 0 { b >> 4 } else { b & 0xf })]
+        });
         constant_time_eq(&hex, configured_hash)
     };
     let bearer_match = u8::from(bearer.is_some_and(matches));
