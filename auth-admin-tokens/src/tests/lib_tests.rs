@@ -4,6 +4,7 @@
 //! Tests for `crates/auth-admin-tokens/src/lib.rs`.
 
 use super::*;
+use busbar_contract::sha256_hex;
 
 fn hash(s: &str) -> String {
     sha256_hex(s.as_bytes())
