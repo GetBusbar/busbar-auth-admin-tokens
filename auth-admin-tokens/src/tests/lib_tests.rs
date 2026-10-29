@@ -371,7 +371,7 @@ fn the_token_comparison_goes_through_the_constant_time_primitive() {
 fn an_admin_token_never_appears_in_logs_or_errors() {
     const TOKEN: &str = "ADMIN-SENTINEL-7f3a91c2e8b4";
     let h = hash(TOKEN);
-    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
     let mut surfaces: Vec<String> = Vec::new();
     tracing::subscriber::with_default(cap.clone(), || {
         // A match on each carrier, a mismatch on each carrier, a near miss.
