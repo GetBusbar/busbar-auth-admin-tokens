@@ -1,6 +1,6 @@
 [package]
 name = "busbar-auth-admin-tokens"
-version = "1.5.0"
+version = "1.6.0"
 publish.workspace = true  # linked into busbar at a pinned rev, or shipped as a signed tarball; never to crates.io
 edition.workspace = true
 rust-version.workspace = true
@@ -22,5 +22,5 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-# `testkit::WarnCapture` (compiled only under the dev-only `test-seal` feature) for the log tests.
-busbar-contract = { workspace = true, features = ["test-seal"] }
+# The test kit's in-memory log double (`busbar_test_kit::warn_capture::WarnCapture`) for the log tests.
+busbar-test-kit = { workspace = true }
