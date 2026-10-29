@@ -309,6 +309,113 @@ fn a_non_header_text_credential_line_is_logged() {
     assert_eq!(cap.messages().len(), 2, "{logged:?}");
 }
 
+/// The website claim "constant-time compare" is held structurally, never by timing (a timing test
+/// is flaky): the module's own non-test source compares the candidate's digest with the configured
+/// one through busbar-contract's `constant_time_eq` and through no other equality.
+#[test]
+fn the_token_comparison_goes_through_the_constant_time_primitive() {
+    let source = include_str!("../lib.rs");
+    let production = source
+        .split("#[cfg(test)]")
+        .next()
+        .expect("the production half of lib.rs");
+    let code: String = production
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        code.contains("use busbar_contract::constant_time_eq;"),
+        "the primitive must be busbar-contract's constant_time_eq"
+    );
+    assert_eq!(
+        code.matches("constant_time_eq(").count(),
+        1,
+        "exactly one comparison site"
+    );
+    assert!(
+        code.contains("constant_time_eq(&hex, configured_hash)"),
+        "the candidate digest is compared with the configured digest through the primitive"
+    );
+    // No short-circuiting equality anywhere near the credential or its digest.
+    for banned in [
+        "== configured_hash",
+        "configured_hash ==",
+        "!= configured_hash",
+        "configured_hash !=",
+        "hex ==",
+        "== hex",
+        "token ==",
+        "== token",
+        "starts_with(",
+        ".eq(",
+        ".ne(",
+        "assert_eq!(hex",
+        "memcmp",
+    ] {
+        assert!(
+            !code.contains(banned),
+            "`{banned}` is a non-constant-time comparison in the token path"
+        );
+    }
+    // The primitive itself still behaves as an equality over bytes.
+    assert!(constant_time_eq("abc", "abc"));
+    assert!(!constant_time_eq("abc", "abd"));
+    assert!(!constant_time_eq("abc", "abcd"));
+}
+
+/// An admin token never appears in a log line or an error string: not when it matches, not when it
+/// does not, not on a malformed line, and not when the settings that should hold its digest hold
+/// the raw token (a refusal that does not echo it).
+#[test]
+fn an_admin_token_never_appears_in_logs_or_errors() {
+    const TOKEN: &str = "ADMIN-SENTINEL-7f3a91c2e8b4";
+    let h = hash(TOKEN);
+    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    let mut surfaces: Vec<String> = Vec::new();
+    tracing::subscriber::with_default(cap.clone(), || {
+        // A match on each carrier, a mismatch on each carrier, a near miss.
+        let _ = authenticate_admin_tokens(Some(&h), Some(TOKEN), None);
+        let _ = authenticate_admin_tokens(Some(&h), None, Some(TOKEN));
+        let _ = authenticate_admin_tokens(Some(&h), Some(&format!("{TOKEN}x")), None);
+        let _ = authenticate_admin_tokens(Some(&h), None, Some(&format!("x{TOKEN}")));
+        // Malformed lines carrying the token's bytes.
+        let _ = bearer_line(format!("Bearer {TOKEN}\u{1}").as_bytes());
+        let _ = header_line(format!("{TOKEN}\u{7f}").as_bytes());
+        let _ = bearer_line(format!("Bearer {TOKEN}\u{ff}").as_bytes());
+    });
+    // The refusals of settings: the raw token, a quoted raw token, and the empty token's digest.
+    for settings in [
+        TOKEN.to_string(),
+        format!("\"{TOKEN}\""),
+        format!("\"{}\"", hash("")),
+        format!("{{\"token\": \"{TOKEN}\"}}"),
+    ] {
+        match digest_of(settings.as_bytes()) {
+            Err(e) => surfaces.push(e.to_string()),
+            Ok(d) => panic!("settings {settings:?} were accepted as the digest {d:?}"),
+        }
+        match <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]) {
+            Err(e) => surfaces.push(e.to_string()),
+            Ok(_) => panic!("open accepted {settings:?}"),
+        }
+    }
+    // The plugin's Debug, with a digest held.
+    let plugin =
+        <AdminTokens as VerifyPlugin>::open(format!("\"{h}\"").as_bytes(), &[]).expect("opens");
+    surfaces.push(format!("{plugin:?}"));
+    surfaces.extend(cap.messages());
+    for surface in &surfaces {
+        assert!(!surface.contains(TOKEN), "token leaked: {surface:?}");
+        assert!(!surface.contains(&h), "digest leaked: {surface:?}");
+        assert!(
+            !surface.contains(&h[..16]),
+            "digest prefix leaked: {surface:?}"
+        );
+    }
+    assert!(!cap.messages().is_empty(), "the refusals were logged");
+}
+
 /// The Statement declares the stateless verifier's concurrency, as webhook-signature, sigv4 and oauth do.
 #[test]
 fn statement_concurrency_is_1024() {
