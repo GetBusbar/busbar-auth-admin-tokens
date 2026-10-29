@@ -22,5 +22,5 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-# `testkit::WarnCapture` (compiled only under the dev-only `test-seal` feature) for the log tests.
-busbar-contract = { workspace = true, features = ["test-seal"] }
+# The test kit's in-memory log double (`busbar_test_kit::warn_capture::WarnCapture`) for the log tests.
+busbar-test-kit = { workspace = true }

@@ -263,7 +263,7 @@ fn debug_never_prints_the_configured_digest() {
 #[test]
 fn a_wrong_token_reject_is_logged_without_the_token() {
     let h = hash("secret");
-    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
     let verdict = tracing::subscriber::with_default(cap.clone(), || {
         authenticate_admin_tokens(Some(&h), Some("WRONG-TOKEN-TEXT"), None)
     });
@@ -279,7 +279,7 @@ fn a_wrong_token_reject_is_logged_without_the_token() {
 #[test]
 fn a_pass_logs_nothing() {
     let h = hash("secret");
-    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
     tracing::subscriber::with_default(cap.clone(), || {
         assert_eq!(
             authenticate_admin_tokens(Some(&h), None, None),
@@ -293,7 +293,7 @@ fn a_pass_logs_nothing() {
 /// bytes of the value.
 #[test]
 fn a_non_header_text_credential_line_is_logged() {
-    let cap = busbar_contract::testkit::WarnCapture::capturing_debug();
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
     tracing::subscriber::with_default(cap.clone(), || {
         assert_eq!(bearer_line(b"Bearer sec\xffret"), None);
         assert_eq!(header_line(b"sec\x01ret"), None);
