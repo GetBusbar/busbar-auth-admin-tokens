@@ -8,6 +8,9 @@ rust-version.workspace = true
 description = "First-party signed kind:auth plugin cdylib: the built-in admin-tokens admin-auth module (the single operator admin token, compared in constant time), packaged as a droppable busbar plugin."
 license.workspace = true
 
+[lints]
+workspace = true
+
 [lib]
 # cdylib: the DROPPED-IN door (a signed tarball in `plugins/`), exporting `busbar_plugin_door`.
 # rlib: what `cargo test` links, and what a loader test depends on to have the cdylib built.
