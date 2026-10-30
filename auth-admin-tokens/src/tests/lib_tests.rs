@@ -530,3 +530,14 @@ fn the_held_digest_is_wiped_on_replace_and_drop() {
     assert_eq!(held.as_str(), first);
     let _: Zeroizing<String> = digest_of(settings.as_bytes()).expect("a digest");
 }
+
+/// `header_text` accepts exactly tab and 0x20..=0x7e: the range edges (0x1f, 0x20, 0x7e, 0x7f).
+#[test]
+fn header_text_range_edges() {
+    assert_eq!(header_text(&[0x1f]), None);
+    assert_eq!(header_text(&[0x20]), Some(" "));
+    assert_eq!(header_text(&[0x7e]), Some("~"));
+    assert_eq!(header_text(&[0x7f]), None);
+    assert_eq!(header_text(b"\t"), Some("\t"));
+    assert_eq!(header_text(&[b'a', 0x7f, b'b']), None);
+}
