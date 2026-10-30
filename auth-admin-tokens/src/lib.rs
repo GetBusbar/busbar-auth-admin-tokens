@@ -129,15 +129,13 @@ pub fn authenticate_admin_tokens(
 }
 
 /// The refusal of settings that are not a digest. It never echoes what it was given.
-pub const NOT_A_DIGEST: &str =
-    "admin-tokens plugin config must be the admin token's SHA-256 digest \
-                                as 64 hex characters (the value is not echoed)";
+pub const NOT_A_DIGEST: &str = "settings: must be the admin token's SHA-256 digest as 64 hex \
+                                characters (the value is not echoed)";
 
 /// The refusal of the digest of an empty token: a blank admin token is refused, as the linked path
 /// refuses it. It never echoes what it was given.
-pub const EMPTY_TOKEN: &str =
-    "admin-tokens plugin config is the SHA-256 digest of an empty token, \
-                               which is refused (the value is not echoed)";
+pub const EMPTY_TOKEN: &str = "settings: is the SHA-256 digest of an empty token, which is \
+                               refused (the value is not echoed)";
 
 /// SHA-256 of the empty string: the digest of a blank admin token.
 const EMPTY_TOKEN_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
