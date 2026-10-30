@@ -514,3 +514,15 @@ fn the_presented_tokens_digest_is_wiped_after_the_compare() {
         "the candidate's hex is held wiped"
     );
 }
+
+/// The held digest is wiped when a `refresh` replaces it and when the instance drops: it lives in a
+/// `Zeroizing<String>`, and `digest_of` hands back a wiping holder too.
+#[test]
+fn the_held_digest_is_wiped_on_replace_and_drop() {
+    let first = hash("first");
+    let settings = format!("\"{first}\"");
+    let plugin = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("opens");
+    let held: &Zeroizing<String> = &plugin.digest();
+    assert_eq!(held.as_str(), first);
+    let _: Zeroizing<String> = digest_of(settings.as_bytes()).expect("a digest");
+}
