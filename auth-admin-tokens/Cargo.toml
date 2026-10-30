@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 [package]
 name = "busbar-auth-admin-tokens"
 version = "1.6.0"
@@ -6,6 +7,9 @@ edition.workspace = true
 rust-version.workspace = true
 description = "The built-in `admin-tokens` admin-auth plugin for busbar: the single operator admin token, compared in constant time across both carriers."
 license.workspace = true
+
+[lints]
+workspace = true
 
 [lib]
 # rlib only: the logic and its door. A build that LINKS this crate registers `door::door` as its

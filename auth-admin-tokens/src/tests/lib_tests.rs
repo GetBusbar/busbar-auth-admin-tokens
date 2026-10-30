@@ -125,10 +125,10 @@ fn a_blank_or_non_text_admin_header_is_absent() {
         b"tok\x01en",
         b"\xff",
     ] {
-        assert_eq!(header_token(value), None, "{value:?}");
+        assert_eq!(header_line(value), None, "{value:?}");
     }
-    assert_eq!(header_token(b"the-token"), Some("the-token"));
-    assert_eq!(header_token(b"a b\tc"), Some("a b\tc"));
+    assert_eq!(header_line(b"the-token"), Some("the-token"));
+    assert_eq!(header_line(b"a b\tc"), Some("a b\tc"));
 }
 
 // ── THE PLUGIN (`VerifyPlugin::open`) ───────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ fn open_takes_the_digest_trimmed_in_either_case() {
     let h = hash("secret");
     let settings = format!("\"  {}\\n\"", h.to_ascii_uppercase());
     let plugin = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("opens");
-    assert_eq!(*plugin.digest(), h);
+    assert_eq!(plugin.digest().as_str(), h);
 }
 
 /// The Statement names the module and its two credential lines.
@@ -297,9 +297,8 @@ fn a_non_header_text_credential_line_is_logged() {
     tracing::subscriber::with_default(cap.clone(), || {
         assert_eq!(bearer_line(b"Bearer sec\xffret"), None);
         assert_eq!(header_line(b"sec\x01ret"), None);
-        // A well-formed non-Bearer scheme and a blank header are plain absences: no log.
+        // A well-formed non-Bearer scheme is a plain absence: no log.
         assert_eq!(bearer_line(b"Basic abc"), None);
-        assert_eq!(header_line(b""), None);
     });
     let logged = cap.messages().join("\n");
     assert!(logged.contains("admin-tokens"), "{logged:?}");
@@ -307,6 +306,31 @@ fn a_non_header_text_credential_line_is_logged() {
     assert!(logged.contains("x-admin-token"), "{logged:?}");
     assert!(!logged.contains("ret"), "value leaked: {logged:?}");
     assert_eq!(cap.messages().len(), 2, "{logged:?}");
+}
+
+/// A credential line that is PRESENT but yields no token (an empty Bearer token, a blank
+/// `X-Admin-Token`) is read as absent AND says so once in the log, never the value. A non-Bearer
+/// scheme stays a silent absence.
+#[test]
+fn a_present_line_with_no_token_is_logged() {
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(bearer_line(b"Bearer "), None);
+        assert_eq!(header_line(b""), None);
+    });
+    let logged = cap.messages().join("\n");
+    assert!(logged.contains("authorization"), "{logged:?}");
+    assert!(logged.contains("x-admin-token"), "{logged:?}");
+    assert!(logged.contains("carries no token"), "{logged:?}");
+    assert_eq!(cap.messages().len(), 2, "{logged:?}");
+
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(bearer_line(b"Basic abc"), None);
+        assert_eq!(bearer_line(b"Bearer tok"), Some("tok"));
+        assert_eq!(header_line(b"tok"), Some("tok"));
+    });
+    assert!(cap.messages().is_empty(), "{:?}", cap.messages());
 }
 
 /// The website claim "constant-time compare" is held structurally, never by timing (a timing test
@@ -455,7 +479,7 @@ fn a_refused_refresh_is_logged_and_keeps_the_digest() {
     tracing::subscriber::with_default(cap.clone(), || {
         assert_eq!(plugin.refresh(format!("\"{RAW}\"").as_bytes(), &[]), 0);
     });
-    assert_eq!(*plugin.digest(), h, "the held digest stands");
+    assert_eq!(plugin.digest().as_str(), h, "the held digest stands");
     let logged = cap.messages().join("\n");
     assert_eq!(cap.messages().len(), 1, "{logged:?}");
     assert!(logged.contains("admin-tokens"), "{logged:?}");
@@ -467,20 +491,24 @@ fn a_refused_refresh_is_logged_and_keeps_the_digest() {
     tracing::subscriber::with_default(cap.clone(), || {
         plugin.refresh(format!("\"{rotated}\"").as_bytes(), &[]);
     });
-    assert_eq!(*plugin.digest(), rotated);
+    assert_eq!(plugin.digest().as_str(), rotated);
     assert!(cap.messages().is_empty(), "{:?}", cap.messages());
 }
 
 /// The presented token's digest and its hex are material derived from the secret: both live in
-/// wiping holders, so neither outlives the compare in memory (read off the production source, as the
-/// constant-time test reads it).
+/// wiping holders, so neither outlives the compare in memory (read off the production source with
+/// comments filtered out, as the constant-time test reads it).
 #[test]
 fn the_presented_tokens_digest_is_wiped_after_the_compare() {
     let source = include_str!("../lib.rs");
-    let production = source
+    let production: String = source
         .split("#[cfg(test)]")
         .next()
-        .expect("the production half of lib.rs");
+        .expect("the production half of lib.rs")
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
         production.contains("let digest = Zeroizing::new(sha256(token.as_bytes()));"),
         "the candidate's raw digest is held wiped"
@@ -489,4 +517,27 @@ fn the_presented_tokens_digest_is_wiped_after_the_compare() {
         production.contains("let mut hex = Zeroizing::new([0u8; 64]);"),
         "the candidate's hex is held wiped"
     );
+}
+
+/// The held digest is wiped when a `refresh` replaces it and when the instance drops: it lives in a
+/// `Zeroizing<String>`, and `digest_of` hands back a wiping holder too.
+#[test]
+fn the_held_digest_is_wiped_on_replace_and_drop() {
+    let first = hash("first");
+    let settings = format!("\"{first}\"");
+    let plugin = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("opens");
+    let held: &Zeroizing<String> = &plugin.digest();
+    assert_eq!(held.as_str(), first);
+    let _: Zeroizing<String> = digest_of(settings.as_bytes()).expect("a digest");
+}
+
+/// `header_text` accepts exactly tab and 0x20..=0x7e: the range edges (0x1f, 0x20, 0x7e, 0x7f).
+#[test]
+fn header_text_range_edges() {
+    assert_eq!(header_text(&[0x1f]), None);
+    assert_eq!(header_text(&[0x20]), Some(" "));
+    assert_eq!(header_text(&[0x7e]), Some("~"));
+    assert_eq!(header_text(&[0x7f]), None);
+    assert_eq!(header_text(b"\t"), Some("\t"));
+    assert_eq!(header_text(&[b'a', 0x7f, b'b']), None);
 }
