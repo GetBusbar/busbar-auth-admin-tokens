@@ -442,3 +442,31 @@ fn a_settings_refusal_is_an_instance_relative_settings_line() {
         assert!(refusal.contains("not echoed"), "{refusal}");
     }
 }
+
+/// A refresh whose settings are not a digest keeps the digest held AND says so in the log once
+/// (module = admin-tokens, a reason word), never echoing the settings it was given.
+#[test]
+fn a_refused_refresh_is_logged_and_keeps_the_digest() {
+    const RAW: &str = "REFRESH-RAW-TOKEN-5c1e";
+    let h = hash("secret");
+    let plugin =
+        <AdminTokens as VerifyPlugin>::open(format!("\"{h}\"").as_bytes(), &[]).expect("opens");
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(plugin.refresh(format!("\"{RAW}\"").as_bytes(), &[]), 0);
+    });
+    assert_eq!(*plugin.digest(), h, "the held digest stands");
+    let logged = cap.messages().join("\n");
+    assert_eq!(cap.messages().len(), 1, "{logged:?}");
+    assert!(logged.contains("admin-tokens"), "{logged:?}");
+    assert!(logged.contains("refresh"), "{logged:?}");
+    assert!(!logged.contains(RAW), "settings echoed: {logged:?}");
+    // An accepted refresh is not a refusal: it logs nothing.
+    let rotated = hash("rotated");
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        plugin.refresh(format!("\"{rotated}\"").as_bytes(), &[]);
+    });
+    assert_eq!(*plugin.digest(), rotated);
+    assert!(cap.messages().is_empty(), "{:?}", cap.messages());
+}
