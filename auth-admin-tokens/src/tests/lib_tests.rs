@@ -179,7 +179,7 @@ fn open_takes_the_digest_trimmed_in_either_case() {
     let h = hash("secret");
     let settings = format!("\"  {}\\n\"", h.to_ascii_uppercase());
     let plugin = <AdminTokens as VerifyPlugin>::open(settings.as_bytes(), &[]).expect("opens");
-    assert_eq!(*plugin.digest(), h);
+    assert_eq!(plugin.digest().as_str(), h);
 }
 
 /// The Statement names the module and its two credential lines.
@@ -479,7 +479,7 @@ fn a_refused_refresh_is_logged_and_keeps_the_digest() {
     tracing::subscriber::with_default(cap.clone(), || {
         assert_eq!(plugin.refresh(format!("\"{RAW}\"").as_bytes(), &[]), 0);
     });
-    assert_eq!(*plugin.digest(), h, "the held digest stands");
+    assert_eq!(plugin.digest().as_str(), h, "the held digest stands");
     let logged = cap.messages().join("\n");
     assert_eq!(cap.messages().len(), 1, "{logged:?}");
     assert!(logged.contains("admin-tokens"), "{logged:?}");
@@ -491,7 +491,7 @@ fn a_refused_refresh_is_logged_and_keeps_the_digest() {
     tracing::subscriber::with_default(cap.clone(), || {
         plugin.refresh(format!("\"{rotated}\"").as_bytes(), &[]);
     });
-    assert_eq!(*plugin.digest(), rotated);
+    assert_eq!(plugin.digest().as_str(), rotated);
     assert!(cap.messages().is_empty(), "{:?}", cap.messages());
 }
 

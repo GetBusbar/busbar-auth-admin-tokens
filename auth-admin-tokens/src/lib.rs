@@ -155,14 +155,16 @@ const EMPTY_TOKEN_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b93
 ///
 /// # Errors
 /// [`NOT_A_DIGEST`]; [`EMPTY_TOKEN`] for the digest of an empty token.
-pub fn digest_of(settings: &[u8]) -> Result<String, &'static str> {
-    let text: String = serde_json::from_slice(settings).map_err(|_| NOT_A_DIGEST)?;
+pub fn digest_of(settings: &[u8]) -> Result<Zeroizing<String>, &'static str> {
+    // The settings text may hold a misplaced raw token: every copy of it is wiped on drop.
+    let text: Zeroizing<String> =
+        Zeroizing::new(serde_json::from_slice(settings).map_err(|_| NOT_A_DIGEST)?);
     let digest = text.trim();
     if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(NOT_A_DIGEST);
     }
-    let digest = digest.to_ascii_lowercase();
-    if digest == EMPTY_TOKEN_SHA256 {
+    let digest = Zeroizing::new(digest.to_ascii_lowercase());
+    if digest.as_str() == EMPTY_TOKEN_SHA256 {
         return Err(EMPTY_TOKEN);
     }
     Ok(digest)
@@ -221,16 +223,17 @@ fn note_no_token(line: &str) {
 /// The plugin: the configured admin token's SHA-256 hex digest (never the raw token).
 ///
 /// The digest sits behind a lock so a `refresh` carrying a ROTATED digest replaces it in place:
-/// the new token is accepted and the old one refused without a re-open.
+/// the new token is accepted and the old one refused without a re-open. The digest is held wiping:
+/// a replaced or dropped digest is zeroed.
 ///
 /// `Debug` is implemented by hand and never prints the digest.
 pub struct AdminTokens {
-    configured_hash: std::sync::RwLock<String>,
+    configured_hash: std::sync::RwLock<Zeroizing<String>>,
 }
 
 impl AdminTokens {
     /// The digest this instance judges against now.
-    fn digest(&self) -> std::sync::RwLockReadGuard<'_, String> {
+    fn digest(&self) -> std::sync::RwLockReadGuard<'_, Zeroizing<String>> {
         self.configured_hash
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
