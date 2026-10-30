@@ -125,10 +125,10 @@ fn a_blank_or_non_text_admin_header_is_absent() {
         b"tok\x01en",
         b"\xff",
     ] {
-        assert_eq!(header_token(value), None, "{value:?}");
+        assert_eq!(header_line(value), None, "{value:?}");
     }
-    assert_eq!(header_token(b"the-token"), Some("the-token"));
-    assert_eq!(header_token(b"a b\tc"), Some("a b\tc"));
+    assert_eq!(header_line(b"the-token"), Some("the-token"));
+    assert_eq!(header_line(b"a b\tc"), Some("a b\tc"));
 }
 
 // ── THE PLUGIN (`VerifyPlugin::open`) ───────────────────────────────────────────────────────

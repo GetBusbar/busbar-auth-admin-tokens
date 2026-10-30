@@ -65,7 +65,12 @@ fn header_text(value: &[u8]) -> Option<&str> {
 /// text, no token) presents no Bearer.
 #[must_use]
 pub fn bearer_token(value: &[u8]) -> Option<&str> {
-    let (scheme, token) = header_text(value)?.split_once(' ')?;
+    bearer_of_text(header_text(value)?)
+}
+
+/// [`bearer_token`] over a value already known to be header text.
+fn bearer_of_text(text: &str) -> Option<&str> {
+    let (scheme, token) = text.split_once(' ')?;
     (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
 }
 
@@ -125,7 +130,7 @@ pub fn authenticate_admin_tokens(
     // A credential was presented (at least one carrier is `Some`) and neither matched. Neither the
     // token nor the digest is logged.
     tracing::info!(
-        module = "admin-tokens",
+        module = ADMIN_TOKENS_MODULE_NAME,
         "admin token refused: token mismatch"
     );
     Verdict::Reject
@@ -163,36 +168,53 @@ pub fn digest_of(settings: &[u8]) -> Result<String, &'static str> {
     Ok(digest)
 }
 
-/// The `X-Admin-Token` line: a value that is not header text, or is blank, is ABSENT, never a
-/// presented wrong credential.
-fn header_token(value: &[u8]) -> Option<&str> {
-    header_text(value).filter(|t| !t.is_empty())
-}
-
-/// The Bearer off the `authorization` line. A value that is not header text is read as absent, and
-/// says so in the log (never the value).
+/// The Bearer off the `authorization` line. A value that is not header text, or a Bearer with no
+/// token, is read as absent and says so in the log (never the value). Another scheme is a silent
+/// absence.
 fn bearer_line(value: &[u8]) -> Option<&str> {
-    if header_text(value).is_none() {
+    let Some(text) = header_text(value) else {
         note_malformed(AUTHORIZATION_HEADER);
+        return None;
+    };
+    let token = bearer_of_text(text);
+    if token.is_none() {
+        let scheme = text.split_once(' ').map_or(text, |(scheme, _)| scheme);
+        if scheme.eq_ignore_ascii_case("bearer") {
+            note_no_token(AUTHORIZATION_HEADER);
+        }
     }
-    bearer_token(value)
+    token
 }
 
-/// The token off the `X-Admin-Token` line. A value that is not header text is read as absent, and
-/// says so in the log (never the value).
+/// The token off the `X-Admin-Token` line. A value that is not header text, or is blank, is read as
+/// absent, never a presented wrong credential, and says so in the log (never the value).
 fn header_line(value: &[u8]) -> Option<&str> {
-    if header_text(value).is_none() {
+    let Some(text) = header_text(value) else {
         note_malformed(ADMIN_TOKEN_HEADER);
+        return None;
+    };
+    if text.is_empty() {
+        note_no_token(ADMIN_TOKEN_HEADER);
+        return None;
     }
-    header_token(value)
+    Some(text)
 }
 
 /// The log line for a credential line that is not header text.
 fn note_malformed(line: &str) {
     tracing::info!(
-        module = "admin-tokens",
+        module = ADMIN_TOKENS_MODULE_NAME,
         line,
         "admin token line is not header text and is read as absent"
+    );
+}
+
+/// The log line for a credential line that is present but carries no token.
+fn note_no_token(line: &str) {
+    tracing::info!(
+        module = ADMIN_TOKENS_MODULE_NAME,
+        line,
+        "admin token line carries no token and is read as absent"
     );
 }
 
@@ -242,7 +264,7 @@ impl VerifyPlugin for AdminTokens {
                     .unwrap_or_else(std::sync::PoisonError::into_inner) = digest;
             }
             Err(reason) => tracing::info!(
-                module = "admin-tokens",
+                module = ADMIN_TOKENS_MODULE_NAME,
                 reason,
                 "admin token refresh refused: the held digest stands"
             ),
@@ -280,13 +302,16 @@ const CARRIERS: &[MarkWord] = &[carrier(AUTHORIZATION_HEADER), carrier(ADMIN_TOK
 /// operator credential's row by this fact, never by its name.
 const TAIL: &AuthTail = &with_operator(verify_tail(0, AuthPoints::HEAD), ADMIN_TOKENS_PRINCIPAL_ID);
 
-/// What the plugin states: its name, version, the concurrency it serves (1024: a pure, stateless
-/// compare, like the other verifiers) and its two carriers.
+/// The concurrency the plugin states it serves.
+pub const CONCURRENCY: u32 = 1024;
+
+/// What the plugin states: its name, version, the concurrency it serves ([`CONCURRENCY`]: a pure compare
+/// holding only the rotatable digest, like the other verifiers) and its two carriers.
 pub const STATEMENT: Statement = with_tail(
     Statement {
         mark_words: CARRIERS.as_ptr(),
         mark_words_len: CARRIERS.len(),
-        ..statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), 1024)
+        ..statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), CONCURRENCY)
     },
     TAIL,
 );
