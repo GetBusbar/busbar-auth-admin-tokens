@@ -297,9 +297,8 @@ fn a_non_header_text_credential_line_is_logged() {
     tracing::subscriber::with_default(cap.clone(), || {
         assert_eq!(bearer_line(b"Bearer sec\xffret"), None);
         assert_eq!(header_line(b"sec\x01ret"), None);
-        // A well-formed non-Bearer scheme and a blank header are plain absences: no log.
+        // A well-formed non-Bearer scheme is a plain absence: no log.
         assert_eq!(bearer_line(b"Basic abc"), None);
-        assert_eq!(header_line(b""), None);
     });
     let logged = cap.messages().join("\n");
     assert!(logged.contains("admin-tokens"), "{logged:?}");
@@ -307,6 +306,31 @@ fn a_non_header_text_credential_line_is_logged() {
     assert!(logged.contains("x-admin-token"), "{logged:?}");
     assert!(!logged.contains("ret"), "value leaked: {logged:?}");
     assert_eq!(cap.messages().len(), 2, "{logged:?}");
+}
+
+/// A credential line that is PRESENT but yields no token (an empty Bearer token, a blank
+/// `X-Admin-Token`) is read as absent AND says so once in the log, never the value. A non-Bearer
+/// scheme stays a silent absence.
+#[test]
+fn a_present_line_with_no_token_is_logged() {
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(bearer_line(b"Bearer "), None);
+        assert_eq!(header_line(b""), None);
+    });
+    let logged = cap.messages().join("\n");
+    assert!(logged.contains("authorization"), "{logged:?}");
+    assert!(logged.contains("x-admin-token"), "{logged:?}");
+    assert!(logged.contains("carries no token"), "{logged:?}");
+    assert_eq!(cap.messages().len(), 2, "{logged:?}");
+
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(bearer_line(b"Basic abc"), None);
+        assert_eq!(bearer_line(b"Bearer tok"), Some("tok"));
+        assert_eq!(header_line(b"tok"), Some("tok"));
+    });
+    assert!(cap.messages().is_empty(), "{:?}", cap.messages());
 }
 
 /// The website claim "constant-time compare" is held structurally, never by timing (a timing test
