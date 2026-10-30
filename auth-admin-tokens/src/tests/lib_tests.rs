@@ -470,3 +470,23 @@ fn a_refused_refresh_is_logged_and_keeps_the_digest() {
     assert_eq!(*plugin.digest(), rotated);
     assert!(cap.messages().is_empty(), "{:?}", cap.messages());
 }
+
+/// The presented token's digest and its hex are material derived from the secret: both live in
+/// wiping holders, so neither outlives the compare in memory (read off the production source, as the
+/// constant-time test reads it).
+#[test]
+fn the_presented_tokens_digest_is_wiped_after_the_compare() {
+    let source = include_str!("../lib.rs");
+    let production = source
+        .split("#[cfg(test)]")
+        .next()
+        .expect("the production half of lib.rs");
+    assert!(
+        production.contains("let digest = Zeroizing::new(sha256(token.as_bytes()));"),
+        "the candidate's raw digest is held wiped"
+    );
+    assert!(
+        production.contains("let mut hex = Zeroizing::new([0u8; 64]);"),
+        "the candidate's hex is held wiped"
+    );
+}
