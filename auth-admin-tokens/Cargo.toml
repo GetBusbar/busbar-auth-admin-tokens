@@ -20,6 +20,8 @@ busbar-contract = { workspace = true }
 # The settings document (a JSON string holding the digest).
 serde_json = { workspace = true }
 tracing = { workspace = true }
+# Wipes the presented token's digest after the compare.
+zeroize = { workspace = true }
 
 [dev-dependencies]
 # The test kit's in-memory log double (`busbar_test_kit::warn_capture::WarnCapture`) for the log tests.

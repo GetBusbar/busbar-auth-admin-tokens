@@ -32,6 +32,7 @@ use busbar_contract::abi::sdk::auth_door::{
 use busbar_contract::abi::sdk::digest::sha256;
 use busbar_contract::abi::sdk::door::statement;
 use busbar_contract::constant_time_eq;
+use zeroize::Zeroizing;
 
 /// The fixed principal id the operator admin token identifies as. The built-in operator credential
 /// carries FULL admin scope by definition (it is the root credential the deployment was born with);
@@ -104,14 +105,16 @@ pub fn authenticate_admin_tokens(
         // No credential presented for this module: Pass (the chain's all-Pass denies).
         return Verdict::Pass;
     }
-    // The candidate's digest in lower-case hex on the stack, compared with the configured one.
+    // The candidate's digest in lower-case hex, compared with the configured one. Both are derived
+    // from the presented secret, so both are wiped when the compare is done.
     let matches = |token: &str| {
         const HEX: &[u8; 16] = b"0123456789abcdef";
-        let digest = sha256(token.as_bytes());
-        let hex: [u8; 64] = std::array::from_fn(|i| {
+        let digest = Zeroizing::new(sha256(token.as_bytes()));
+        let mut hex = Zeroizing::new([0u8; 64]);
+        for (i, h) in hex.iter_mut().enumerate() {
             let b = digest[i / 2];
-            HEX[usize::from(if i % 2 == 0 { b >> 4 } else { b & 0xf })]
-        });
+            *h = HEX[usize::from(if i % 2 == 0 { b >> 4 } else { b & 0xf })];
+        }
         constant_time_eq(&hex, configured_hash)
     };
     let bearer_match = u8::from(bearer.is_some_and(matches));

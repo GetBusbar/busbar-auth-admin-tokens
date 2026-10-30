@@ -206,6 +206,7 @@ dependencies = [
  "busbar-test-kit",
  "serde_json",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
