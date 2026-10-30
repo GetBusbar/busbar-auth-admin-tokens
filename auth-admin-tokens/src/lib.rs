@@ -227,14 +227,22 @@ impl VerifyPlugin for AdminTokens {
 
     /// A reload: the settings `refresh` carries are read as `open` reads them, so a rotated digest
     /// replaces the one held and is judged from the next request on. Settings that are not a digest
-    /// keep the digest held (a refresh cannot refuse; dropping to no digest would answer `Pass`,
-    /// and a held instance never stops judging). Nothing is cached, so nothing is dropped: `0`.
+    /// keep the digest held and are logged (a refresh cannot refuse; dropping to no digest would
+    /// answer `Pass`, and a held instance never stops judging). Nothing is cached, so nothing is
+    /// dropped: `0`.
     fn refresh(&self, settings: &[u8], _secrets: &[&[u8]]) -> u64 {
-        if let Ok(digest) = digest_of(settings) {
-            *self
-                .configured_hash
-                .write()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = digest;
+        match digest_of(settings) {
+            Ok(digest) => {
+                *self
+                    .configured_hash
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = digest;
+            }
+            Err(reason) => tracing::info!(
+                module = "admin-tokens",
+                reason,
+                "admin token refresh refused: the held digest stands"
+            ),
         }
         0
     }
