@@ -421,3 +421,24 @@ fn an_admin_token_never_appears_in_logs_or_errors() {
 fn statement_concurrency_is_1024() {
     assert_eq!(STATEMENT.max_inflight, 1024);
 }
+
+/// A settings refusal is a line in the contract's instance-relative form (`settings: <reason>`), so
+/// the host renders it under the instance (`auth.<name>.settings: ...`) and the validate rule holds.
+#[test]
+fn a_settings_refusal_is_an_instance_relative_settings_line() {
+    use busbar_contract::abi::mechanism::lifecycle::{check_validate_refusal, refusal_lines};
+    for refusal in [NOT_A_DIGEST, EMPTY_TOKEN] {
+        assert!(refusal.starts_with("settings: "), "{refusal}");
+        assert!(
+            check_validate_refusal(refusal.as_bytes()).is_ok(),
+            "{refusal}"
+        );
+        let lines = refusal_lines("auth", "admin-tokens", refusal);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with("auth.admin-tokens.settings: "),
+            "{lines:?}"
+        );
+        assert!(refusal.contains("not echoed"), "{refusal}");
+    }
+}
