@@ -314,7 +314,11 @@ pub const STATEMENT: Statement = with_tail(
     Statement {
         mark_words: CARRIERS.as_ptr(),
         mark_words_len: CARRIERS.len(),
-        ..statement(ADMIN_TOKENS_MODULE_NAME, env!("CARGO_PKG_VERSION"), CONCURRENCY)
+        ..statement(
+            ADMIN_TOKENS_MODULE_NAME,
+            env!("CARGO_PKG_VERSION"),
+            CONCURRENCY,
+        )
     },
     TAIL,
 );
