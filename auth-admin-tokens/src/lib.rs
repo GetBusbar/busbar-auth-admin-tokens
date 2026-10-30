@@ -21,6 +21,7 @@
 //! either way is [`authenticate_admin_tokens`]'s. The crate holds no `unsafe`.
 
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 
 use busbar_contract::abi::auth::{AuthPoints, AuthTail};
 use busbar_contract::abi::mechanism::door::{MarkWord, Statement};
@@ -31,6 +32,7 @@ use busbar_contract::abi::sdk::auth_door::{
 use busbar_contract::abi::sdk::digest::sha256;
 use busbar_contract::abi::sdk::door::statement;
 use busbar_contract::constant_time_eq;
+use zeroize::Zeroizing;
 
 /// The fixed principal id the operator admin token identifies as. The built-in operator credential
 /// carries FULL admin scope by definition (it is the root credential the deployment was born with);
@@ -103,14 +105,16 @@ pub fn authenticate_admin_tokens(
         // No credential presented for this module: Pass (the chain's all-Pass denies).
         return Verdict::Pass;
     }
-    // The candidate's digest in lower-case hex on the stack, compared with the configured one.
+    // The candidate's digest in lower-case hex, compared with the configured one. Both are derived
+    // from the presented secret, so both are wiped when the compare is done.
     let matches = |token: &str| {
         const HEX: &[u8; 16] = b"0123456789abcdef";
-        let digest = sha256(token.as_bytes());
-        let hex: [u8; 64] = std::array::from_fn(|i| {
+        let digest = Zeroizing::new(sha256(token.as_bytes()));
+        let mut hex = Zeroizing::new([0u8; 64]);
+        for (i, h) in hex.iter_mut().enumerate() {
             let b = digest[i / 2];
-            HEX[usize::from(if i % 2 == 0 { b >> 4 } else { b & 0xf })]
-        });
+            *h = HEX[usize::from(if i % 2 == 0 { b >> 4 } else { b & 0xf })];
+        }
         constant_time_eq(&hex, configured_hash)
     };
     let bearer_match = u8::from(bearer.is_some_and(matches));
@@ -128,15 +132,13 @@ pub fn authenticate_admin_tokens(
 }
 
 /// The refusal of settings that are not a digest. It never echoes what it was given.
-pub const NOT_A_DIGEST: &str =
-    "admin-tokens plugin config must be the admin token's SHA-256 digest \
-                                as 64 hex characters (the value is not echoed)";
+pub const NOT_A_DIGEST: &str = "settings: must be the admin token's SHA-256 digest as 64 hex \
+                                characters (the value is not echoed)";
 
 /// The refusal of the digest of an empty token: a blank admin token is refused, as the linked path
 /// refuses it. It never echoes what it was given.
-pub const EMPTY_TOKEN: &str =
-    "admin-tokens plugin config is the SHA-256 digest of an empty token, \
-                               which is refused (the value is not echoed)";
+pub const EMPTY_TOKEN: &str = "settings: is the SHA-256 digest of an empty token, which is \
+                               refused (the value is not echoed)";
 
 /// SHA-256 of the empty string: the digest of a blank admin token.
 const EMPTY_TOKEN_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -228,14 +230,22 @@ impl VerifyPlugin for AdminTokens {
 
     /// A reload: the settings `refresh` carries are read as `open` reads them, so a rotated digest
     /// replaces the one held and is judged from the next request on. Settings that are not a digest
-    /// keep the digest held (a refresh cannot refuse; dropping to no digest would answer `Pass`,
-    /// and a held instance never stops judging). Nothing is cached, so nothing is dropped: `0`.
+    /// keep the digest held and are logged (a refresh cannot refuse; dropping to no digest would
+    /// answer `Pass`, and a held instance never stops judging). Nothing is cached, so nothing is
+    /// dropped: `0`.
     fn refresh(&self, settings: &[u8], _secrets: &[&[u8]]) -> u64 {
-        if let Ok(digest) = digest_of(settings) {
-            *self
-                .configured_hash
-                .write()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = digest;
+        match digest_of(settings) {
+            Ok(digest) => {
+                *self
+                    .configured_hash
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = digest;
+            }
+            Err(reason) => tracing::info!(
+                module = "admin-tokens",
+                reason,
+                "admin token refresh refused: the held digest stands"
+            ),
         }
         0
     }

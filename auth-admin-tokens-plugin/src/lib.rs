@@ -6,6 +6,7 @@
 //! ONE symbol, `busbar_plugin_door` (`export_door!`). The logic crate holds no
 //! `unsafe` and exports nothing, so a build that links it carries no door symbol.
 #![deny(unsafe_code)]
+#![deny(missing_docs)]
 
 pub use busbar_auth_admin_tokens::*;
 

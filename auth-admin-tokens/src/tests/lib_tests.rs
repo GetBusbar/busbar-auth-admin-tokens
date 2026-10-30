@@ -421,3 +421,72 @@ fn an_admin_token_never_appears_in_logs_or_errors() {
 fn statement_concurrency_is_1024() {
     assert_eq!(STATEMENT.max_inflight, 1024);
 }
+
+/// A settings refusal is a line in the contract's instance-relative form (`settings: <reason>`), so
+/// the host renders it under the instance (`auth.<name>.settings: ...`) and the validate rule holds.
+#[test]
+fn a_settings_refusal_is_an_instance_relative_settings_line() {
+    use busbar_contract::abi::mechanism::lifecycle::{check_validate_refusal, refusal_lines};
+    for refusal in [NOT_A_DIGEST, EMPTY_TOKEN] {
+        assert!(refusal.starts_with("settings: "), "{refusal}");
+        assert!(
+            check_validate_refusal(refusal.as_bytes()).is_ok(),
+            "{refusal}"
+        );
+        let lines = refusal_lines("auth", "admin-tokens", refusal);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with("auth.admin-tokens.settings: "),
+            "{lines:?}"
+        );
+        assert!(refusal.contains("not echoed"), "{refusal}");
+    }
+}
+
+/// A refresh whose settings are not a digest keeps the digest held AND says so in the log once
+/// (module = admin-tokens, a reason word), never echoing the settings it was given.
+#[test]
+fn a_refused_refresh_is_logged_and_keeps_the_digest() {
+    const RAW: &str = "REFRESH-RAW-TOKEN-5c1e";
+    let h = hash("secret");
+    let plugin =
+        <AdminTokens as VerifyPlugin>::open(format!("\"{h}\"").as_bytes(), &[]).expect("opens");
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        assert_eq!(plugin.refresh(format!("\"{RAW}\"").as_bytes(), &[]), 0);
+    });
+    assert_eq!(*plugin.digest(), h, "the held digest stands");
+    let logged = cap.messages().join("\n");
+    assert_eq!(cap.messages().len(), 1, "{logged:?}");
+    assert!(logged.contains("admin-tokens"), "{logged:?}");
+    assert!(logged.contains("refresh"), "{logged:?}");
+    assert!(!logged.contains(RAW), "settings echoed: {logged:?}");
+    // An accepted refresh is not a refusal: it logs nothing.
+    let rotated = hash("rotated");
+    let cap = busbar_test_kit::warn_capture::WarnCapture::capturing_debug();
+    tracing::subscriber::with_default(cap.clone(), || {
+        plugin.refresh(format!("\"{rotated}\"").as_bytes(), &[]);
+    });
+    assert_eq!(*plugin.digest(), rotated);
+    assert!(cap.messages().is_empty(), "{:?}", cap.messages());
+}
+
+/// The presented token's digest and its hex are material derived from the secret: both live in
+/// wiping holders, so neither outlives the compare in memory (read off the production source, as the
+/// constant-time test reads it).
+#[test]
+fn the_presented_tokens_digest_is_wiped_after_the_compare() {
+    let source = include_str!("../lib.rs");
+    let production = source
+        .split("#[cfg(test)]")
+        .next()
+        .expect("the production half of lib.rs");
+    assert!(
+        production.contains("let digest = Zeroizing::new(sha256(token.as_bytes()));"),
+        "the candidate's raw digest is held wiped"
+    );
+    assert!(
+        production.contains("let mut hex = Zeroizing::new([0u8; 64]);"),
+        "the candidate's hex is held wiped"
+    );
+}
