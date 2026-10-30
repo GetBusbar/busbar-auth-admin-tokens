@@ -21,6 +21,7 @@
 //! either way is [`authenticate_admin_tokens`]'s. The crate holds no `unsafe`.
 
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 
 use busbar_contract::abi::auth::{AuthPoints, AuthTail};
 use busbar_contract::abi::mechanism::door::{MarkWord, Statement};
